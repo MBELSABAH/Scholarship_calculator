@@ -1,0 +1,35 @@
+--- Academic Year 2023-2024 ---
+CS-1920-01 2024-05-06 - 2024-06-28 | Computer Science II | 3 credits | Final Grade: 100
+CS-1920L-02 2024-05-06 - 2024-06-28 | Computer Science 1920 Lab | 0 credits | Final Grade: 
+MATH-3010-01 2024-05-06 - 2024-06-13 | Differential Equations | 3 credits | Final Grade: 97
+CS-1910-01 2024-01-08 - 2024-04-25 | Computer Science I | 3 credits | Final Grade: 100
+CS-1910L-04 2024-01-08 - 2024-04-25 | Computer Science 1910 Lab | 0 credits | Final Grade: 
+MATH-1920-02 2024-01-08 - 2024-04-25 | Single Variable Calculus II | 4 credits | Final Grade: 80
+MATH-1920T-01 2024-01-08 - 2024-04-25 | Math 1920 Tutorial | 0 credits | Final Grade: 
+PHIL-1110-01 2024-01-08 - 2024-04-25 | Critical Thinking | 3 credits | Final Grade: 82
+STAT-1910-01 2024-01-08 - 2024-04-25 | Intro to Probability and Stats | 3 credits | Final Grade: 90
+STAT-1910L-02 2024-01-08 - 2024-04-25 | STAT 1910 Lab | 0 credits | Final Grade: 
+UPEI-1030-07 2024-01-08 - 2024-04-25 | University Studies | 3 credits | Final Grade: 90
+UPEI-SVPR-2024W 2024-01-01 - 2024-04-30 | Preventing Sexualized Violence | 0 credits | Final Grade: P
+CHEM-1110-02 2023-09-06 - 2023-12-22 | General Chemistry I | 3 credits | Final Grade: 87
+CHEM-1110L-07 2023-09-06 - 2023-12-22 | Chemistry 1110 Lab | 0 credits | Final Grade: 
+CS-1910-02 2023-09-06 - 2023-12-22 | Computer Science I | 3 credits | Final Grade: 00
+CS-1910L-02 2023-09-06 - 2023-12-22 | Computer Science 1910 Lab | 0 credits | Final Grade: 
+ENV-1010-01 2023-09-06 - 2023-12-22 | Intro to Environmental Studies | 3 credits | Final Grade: 63
+IKE-1040-13 2023-09-06 - 2023-12-22 | Indigenous Teachings | 3 credits | Final Grade: 93
+MATH-1910-05 2023-09-06 - 2023-12-22 | Single Variable Calculus I | 4 credits | Final Grade: 96
+MATH-1910T-05 2023-09-06 - 2023-12-22 | Math 1910 Tutorial | 0 credits | Final Grade: 
+
+--- Academic Year 2024-2025 ---
+CS-2060-01 2025-01-06 - 2025-04-28 | Web Development, Programming | 3 credits | Final Grade: 
+CS-2520-01 2025-01-06 - 2025-04-28 | Computer Org. and Architecture | 3 credits | Final Grade: 
+CS-2820-02 2025-01-06 - 2025-04-28 | Programming Practices | 3 credits | Final Grade: 
+CS-2920-01 2025-01-06 - 2025-04-28 | Data Structures and Algorithms | 3 credits | Final Grade: 
+MATH-2720-01 2025-01-06 - 2025-04-28 | Mathematical Reasoning | 3 credits | Final Grade: 
+POLS-2120-01 2025-01-06 - 2025-04-28 | Law, Pol, Judicial Process II | 3 credits | Final Grade: 
+CS-2620-01 2024-09-04 - 2024-12-23 | Comp Programming Languages | 3 credits | Final Grade: 
+CS-2910-01 2024-09-04 - 2024-12-23 | Computer Science III | 3 credits | Final Grade: 91
+CS-2910L-03 2024-09-04 - 2024-12-23 | Computer Science 2910 Lab | 0 credits | Final Grade: 
+MATH-2420-01 2024-09-04 - 2024-12-23 | Combinatorics I | 3 credits | Final Grade: DSC
+MATH-2610-02 2024-09-04 - 2024-12-23 | Linear Algebra I | 3 credits | Final Grade: 89
+MATH-2910-01 2024-09-04 - 2024-12-23 | Multivariable, Vector Calculus | 4 credits | Final Grade: 93
