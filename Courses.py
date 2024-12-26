@@ -122,6 +122,7 @@ class Courses(object):
         """
         Calculates the cumulative GPA (CGPA) using only courses with valid numeric GPAs.
         Includes only the highest mark for each course code in the calculation.
+        Ignores section numbers in course codes (e.g., CS-1910-01 and CS-1910-02 are treated as same course).
 
         Returns:
             str: A message indicating the cumulative GPA or a message if no valid courses are found.
@@ -132,10 +133,12 @@ class Courses(object):
         # Track the highest marks for each course code
         highest_marks = {}
         for course_code, _, mark, credit_hours, _ in self.__courses:
+            # Strip section number from course code (everything after second hyphen)
+            base_course_code = '-'.join(course_code.split('-')[:2])
             if mark.percentage not in ["DSC", "N/A", "E", "P"]:  # Exclude invalid marks
-                if (course_code not in highest_marks or mark.get_comparable_percentage() >
-                        highest_marks[course_code][0].get_comparable_percentage()):
-                    highest_marks[course_code] = (mark, credit_hours)
+                if (base_course_code not in highest_marks or mark.get_comparable_percentage() >
+                        highest_marks[base_course_code][0].get_comparable_percentage()):
+                    highest_marks[base_course_code] = (mark, credit_hours)
 
         # Calculate GPA using the highest marks
         for mark, credit_hours in highest_marks.values():
