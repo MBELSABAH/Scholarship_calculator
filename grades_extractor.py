@@ -6,6 +6,7 @@ import time
 
 
 # Helper function to infer academic year
+# noinspection PyShadowingNames
 def infer_academic_year(start_date):
     year = int(start_date.split("-")[0])
     month = int(start_date.split("-")[1])
@@ -86,11 +87,12 @@ try:
         if len(columns) >= 4:  # Ensure the row has at least 4 columns
             course_section = " ".join(columns[0].text.split())  # Clean text
             title = " ".join(columns[1].text.split())  # Clean text
-            credits = " ".join(columns[2].text.split())  # Clean text
+            credit = " ".join(columns[2].text.split())  # Clean text
             final_grade = " ".join(columns[3].text.split())  # Clean text
             start_date = course_section.split(" ")[-1]
             academic_year = infer_academic_year(start_date)
-            results.append((academic_year, f"{course_section} | {title} | {credits} credits | Final Grade: {final_grade}"))
+            results.append((academic_year, f"{course_section} | {title} |"
+                                           f" {credits} credits | Final Grade: {final_grade}"))
 
     # Step 8: Save the results to a file without extra spaces between lines
     results.sort(key=lambda x: x[0])  # Sort by academic year

@@ -129,11 +129,12 @@ class Courses(object):
         total_weighted_gpa: float = 0  # Total weighted GPA
         total_credit_hours: float = 0  # Total credit hours
 
-        # Track highest marks for each course code
+        # Track the highest marks for each course code
         highest_marks = {}
         for course_code, _, mark, credit_hours, _ in self.__courses:
             if mark.percentage not in ["DSC", "N/A", "E", "P"]:  # Exclude invalid marks
-                if course_code not in highest_marks or mark.get_comparable_percentage() > highest_marks[course_code][0].get_comparable_percentage():
+                if (course_code not in highest_marks or mark.get_comparable_percentage() >
+                        highest_marks[course_code][0].get_comparable_percentage()):
                     highest_marks[course_code] = (mark, credit_hours)
 
         # Calculate GPA using the highest marks
