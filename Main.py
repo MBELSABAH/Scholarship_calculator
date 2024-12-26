@@ -72,7 +72,8 @@ if __name__ == "__main__":
     # First, run the grades extractor to get the latest grades
     print("Fetching latest grades...")
     try:
-        subprocess.run(["python3", "grades_extractor.py"], check=True)
+        venv_python = "./venv/bin/python"
+        subprocess.run([venv_python, "grades_extractor_chrome.py"], check=True)
         print("Successfully fetched latest grades.")
         print('='*100)
     except subprocess.CalledProcessError as e:
