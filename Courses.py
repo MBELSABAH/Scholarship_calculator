@@ -98,9 +98,9 @@ class Courses(object):
                     total_credit_hours += credit_hours
 
         if total_credit_hours == 0:  # No valid courses in the specified year
-            return f"No courses taken in the academic year {academic_year} to calculate scholarship."
+            return f"Year {academic_year} - No courses taken in the academic year to calculate scholarship."
         elif total_credit_hours < 30:  # Less than the minimum amount of courses required
-            return (f"Not enough courses taken in the academic year {academic_year} to calculate scholarship."
+            return (f"Year {academic_year} - Not enough courses taken in the academic year to calculate scholarship."
                     f" Minimum required 30, current credits: {total_credit_hours}")
 
         weighted_average = total_weighted_marks / total_credit_hours
@@ -160,7 +160,7 @@ class Courses(object):
             str: A string containing the student details and a list of all courses with their details.
         """
         separator: str = "=" * 100  # Separator for formatting
-        return_value: str = ""
+        return_value: str = "Completed Courses by year:\n"
 
         # Group courses by academic year
         courses_by_year = {}

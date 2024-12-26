@@ -25,7 +25,7 @@ class Mark(object):
             self.letter = Mark.percentage_to_letter(percentage)
 
     @staticmethod
-    def percentage_to_gpa(percentage: str | int):
+    def percentage_to_gpa(percentage: str | int) -> float:
         """
         Converts a percentage to a GPA.
 
@@ -70,7 +70,7 @@ class Mark(object):
         return "N/A"  # Default for invalid percentage
 
     @staticmethod
-    def percentage_to_letter(percentage: str | int):
+    def percentage_to_letter(percentage: str | int) -> str:
         """
         Converts a percentage to a letter grade.
 
@@ -114,7 +114,7 @@ class Mark(object):
                 return "F"
         return "N/A"
 
-    def get_comparable_percentage(self):
+    def get_comparable_percentage(self) -> str | int:
         """
         Returns the percentage value for sorting purposes.
 
@@ -127,7 +127,7 @@ class Mark(object):
             return 0
         return -1  # Treat "N/A", "P", and "DSC" as the lowest possible value
 
-    def __str__(self):
+    def __str__(self) -> str:
         """
         Returns a string representation of the mark.
 

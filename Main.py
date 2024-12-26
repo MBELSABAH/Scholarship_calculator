@@ -1,4 +1,5 @@
 import re
+import subprocess
 from Student import Student
 from Courses import Courses
 from Mark import Mark
@@ -18,7 +19,7 @@ def parse_grades_file(file_path: str):
     with open(file_path, "r", encoding="utf-8") as file:
         lines = file.readlines()
 
-    parsed_courses_by_year = {}  # Renamed to avoid shadowing
+    parsed_courses_by_year = {}
     current_academic_year = None
     academic_year_pattern = r"--- Academic Year (\d{4}-\d{4}) ---"
     course_pattern = r"^(.*?) \| (.*?) \| (\d+) credits \| Final Grade: (.*)$"
@@ -68,8 +69,18 @@ def map_years_to_academic_years(parsed_courses: dict):
 
 
 if __name__ == "__main__":
+    # First, run the grades extractor to get the latest grades
+    print("Fetching latest grades...")
+    try:
+        subprocess.run(["python3", "grades_extractor.py"], check=True)
+        print("Successfully fetched latest grades.")
+        print('='*100)
+    except subprocess.CalledProcessError as e:
+        print(f"Error fetching grades: {e}")
+        exit(1)
+
     # Parse the grades file
-    grades_file_path = "printer_friendly_grades.txt"  # Replace with the path to your grades file
+    grades_file_path = "printer_friendly_grades.txt"
     courses_by_academic_year = parse_grades_file(grades_file_path)
 
     # Map academic years to year1, year2, etc.
@@ -99,9 +110,12 @@ if __name__ == "__main__":
     # Link the Courses object back to the Student
     mohamed.set_courses(courses_obj)
 
-    # Print the Student object (with associated courses)
+    # Print student information
     print(mohamed)
+    print()  # Add a blank line before scholarships
 
-    # Print the scholarship calculation results for each academic year
-    for year_index in range(1, len(mapped_courses_by_year) + 1):
-        print(courses_obj.calculate_scholarship(year_index))  # Scholarship for year1, year2, etc.
+    # Calculate scholarships for each year
+    print("Scholarship Eligibility:")
+    print("=" * 100)
+    for year in range(1, len(mapped_courses_by_year) + 1):
+        print(mohamed.get_courses().calculate_scholarship(year))

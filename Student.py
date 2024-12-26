@@ -24,6 +24,15 @@ class Student:
         """
         self.__courses = courses
 
+    def get_courses(self) -> Courses:
+        """
+        Gets the student's courses.
+
+        Returns:
+            Courses: The student's courses object
+        """
+        return self.__courses
+
     def __str__(self) -> str:
         """
         Returns a string representation of the student.

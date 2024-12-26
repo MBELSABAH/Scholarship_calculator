@@ -34,17 +34,17 @@ try:
     password_input.clear()
 
     # Add delays to ensure smooth input
-    time.sleep(1)
+    time.sleep(0.5)
     username_input.send_keys("mbelsabah")  # Replace with your username
 
-    time.sleep(1)
+    time.sleep(0.5)
     password_input.send_keys("Brimxl12!")  # Replace with your password
 
-    time.sleep(1)
+    time.sleep(0.5)
     password_input.submit()  # Submit the login form
 
     # Wait for the page to load
-    time.sleep(5)
+    time.sleep(1)
 
     print("Login successful.")
 
@@ -56,7 +56,7 @@ try:
     print("Successfully clicked the Grades button.")
 
     # Wait for the grades page to load
-    time.sleep(5)
+    time.sleep(1)
 
     # Step 4: Select all semesters by checking all checkboxes
     checkboxes = driver.find_elements(By.XPATH, "//input[@type='checkbox']")  # Adjust XPath as needed
@@ -73,7 +73,7 @@ try:
     print("Clicked the Print button.")
 
     # Wait for the printer-friendly page to load
-    time.sleep(5)
+    time.sleep(1)
 
     # Step 6: Switch to the new window (printer-friendly page)
     driver.switch_to.window(driver.window_handles[-1])
@@ -92,7 +92,7 @@ try:
             start_date = course_section.split(" ")[-1]
             academic_year = infer_academic_year(start_date)
             results.append((academic_year, f"{course_section} | {title} |"
-                                           f" {credits} credits | Final Grade: {final_grade}"))
+                                           f" {credit} credits | Final Grade: {final_grade}"))
 
     # Step 8: Save the results to a file without extra spaces between lines
     results.sort(key=lambda x: x[0])  # Sort by academic year
