@@ -27,7 +27,7 @@ class Mark(object):
     @staticmethod
     def percentage_to_gpa(percentage: str | int) -> float:
         """
-        Converts a percentage to a GPA.
+        Converts a percentage to GPA.
 
         Args:
             percentage (str | int): The percentage grade.

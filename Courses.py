@@ -86,26 +86,23 @@ class Courses(object):
         total_weighted_marks = 0
         total_credit_hours = 0
 
-        # Filter courses for the given academic year
         for _, _, mark, credit_hours, course_year in self.__courses:
             if course_year == academic_year:
-                # Include only valid marks in the calculation
                 if isinstance(mark.percentage, (int, float)):
                     total_weighted_marks += mark.percentage * credit_hours
                     total_credit_hours += credit_hours
-                elif mark.percentage == "E":  # Treat "E" as a mark of 0 for scholarships
-                    total_weighted_marks += 0 * credit_hours
+                elif mark.percentage == "E":
+                    total_weighted_marks += 0
                     total_credit_hours += credit_hours
 
-        if total_credit_hours == 0:  # No valid courses in the specified year
+        if total_credit_hours == 0:
             return f"Year {academic_year} - No courses taken in the academic year to calculate scholarship."
-        elif total_credit_hours < 30:  # Less than the minimum amount of courses required
+        elif total_credit_hours < 30:
             return (f"Year {academic_year} - Not enough courses taken in the academic year to calculate scholarship."
-                    f" Minimum required 30, current credits: {total_credit_hours}")
+                    f" Minimum credits required: 30, current credits: {total_credit_hours}")
 
         weighted_average = total_weighted_marks / total_credit_hours
 
-        # Determine the scholarship amount based on the weighted average
         if 95 <= weighted_average <= 100:
             return f"Year {academic_year} - Weighted Average: {weighted_average:.2f}, $3000 Scholarship"
         elif 90 <= weighted_average < 95:
@@ -127,66 +124,51 @@ class Courses(object):
         Returns:
             str: A message indicating the cumulative GPA or a message if no valid courses are found.
         """
-        total_weighted_gpa: float = 0  # Total weighted GPA
-        total_credit_hours: float = 0  # Total credit hours
+        total_weighted_gpa: float = 0
+        total_credit_hours: float = 0
 
-        # Track the highest marks for each course code
         highest_marks = {}
         for course_code, _, mark, credit_hours, _ in self.__courses:
-            # Strip section number from course code (everything after second hyphen)
             base_course_code = '-'.join(course_code.split('-')[:2])
-            if mark.percentage not in ["DSC", "N/A", "E", "P"]:  # Exclude invalid marks
+            if mark.percentage not in ["DSC", "N/A", "P"]:
                 if (base_course_code not in highest_marks or mark.get_comparable_percentage() >
                         highest_marks[base_course_code][0].get_comparable_percentage()):
                     highest_marks[base_course_code] = (mark, credit_hours)
 
-        # Calculate GPA using the highest marks
         for mark, credit_hours in highest_marks.values():
             total_weighted_gpa += mark.gpa * credit_hours
             total_credit_hours += credit_hours
 
-        if total_credit_hours == 0:  # No valid courses
+        if total_credit_hours == 0:
             return "No valid courses to calculate GPA."
 
-        cumulative_gpa = total_weighted_gpa / total_credit_hours  # Calculate cumulative GPA
-        return f"Cumulative GPA: {cumulative_gpa:.3f}, Total Credit Hours: {total_credit_hours}"
+        cumulative_gpa = total_weighted_gpa / total_credit_hours
+        return f"Cumulative GPA: {cumulative_gpa:.3f}\nTotal Credit Hours: {total_credit_hours}"
 
     def __str__(self) -> str:
         """
         Returns a string representation of the Courses object, listing all courses grouped by academic year,
         sorted first by subject name prefix (e.g., 'Math', 'CS') and then by subject mark.
-
-        Returns:
-            str: A string containing the student details and a list of all courses with their details.
         """
-        separator: str = "=" * 100  # Separator for formatting
-        return_value: str = "Completed Courses by year:\n"
+        separator: str = "=" * 100
+        output: str = "Completed Courses by year:\n"
 
-        # Group courses by academic year
+        # Group by year
         courses_by_year = {}
-        for course_code, course_name, mark, credit_hours, academic_year in self.__courses:
-            if academic_year not in courses_by_year:
-                courses_by_year[academic_year] = []
-            courses_by_year[academic_year].append((course_code, course_name, mark, credit_hours))
+        for course_code, course_name, mark, credit_hours, year in self.__courses:
+            courses_by_year.setdefault(year, []).append((course_code, course_name, mark, credit_hours))
 
-        # Sort years and process each year's courses
-        for year in sorted(courses_by_year.keys()):
-            return_value += f"\nYear {year}:\n"
-
-            # Sort courses by subject prefix (e.g., 'Math', 'CS'), then by mark (percentage descending)
+        for year in sorted(courses_by_year):
+            output += f"\nYear {year}:\n{separator}\n"
             sorted_courses = sorted(
                 courses_by_year[year],
-                key=lambda item: (
-                    item[0].split('-')[0],  # Subject prefix (e.g., 'Math', 'CS')
-                    -item[2].get_comparable_percentage()  # Mark (descending)
-                ),
+                key=lambda item: (item[0].split('-')[0], -item[2].get_comparable_percentage())
             )
-
-            # Enumerate and format sorted courses
-            for i, (course_code, course_name, mark, credit_hours) in enumerate(sorted_courses, start=1):
-                return_value += (
-                    f"{i}. Course: {course_code} ({course_name}), {mark}, Credit Hours: {credit_hours}\n"
+            width = len(str(len(sorted_courses)))
+            for i, (code, name, mark, credits) in enumerate(sorted_courses, start=1):
+                output += (
+                    f"{i:>{width}}. Course: {code} ({name}), {mark}, Credit Hours: {credits}\n"
                 )
+            output += separator + "\n"
 
-        return_value += separator  # Add the separator at the end
-        return return_value
+        return output

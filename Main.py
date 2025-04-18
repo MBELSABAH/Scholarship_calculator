@@ -1,20 +1,14 @@
-import re
 import subprocess
 from Student import Student
 from Courses import Courses
 from Mark import Mark
+import os
+import re
 
 
-# noinspection PyShadowingNames
 def parse_grades_file(file_path: str):
     """
     Parses the grades file and organizes the courses by academic year.
-
-    Args:
-        file_path (str): Path to the grades file.
-
-    Returns:
-        dict: A dictionary where keys are academic years and values are lists of course details.
     """
     with open(file_path, "r", encoding="utf-8") as file:
         lines = file.readlines()
@@ -26,24 +20,21 @@ def parse_grades_file(file_path: str):
 
     for line in lines:
         line = line.strip()
-        # Check for academic year headers
         match_year = re.match(academic_year_pattern, line)
         if match_year:
             current_academic_year = match_year.group(1)
             parsed_courses_by_year[current_academic_year] = []
             continue
 
-        # Check for course details
         match_course = re.match(course_pattern, line)
         if match_course and current_academic_year:
-            parsed_course_code = match_course.group(1).split()[0]
-            parsed_course_name = match_course.group(2)
-            parsed_credit_hours = int(match_course.group(3))
-            parsed_final_grade = match_course.group(4)
-            # Default empty grades to "N/A"
-            parsed_final_grade = "N/A" if parsed_final_grade == "" else parsed_final_grade
+            code = match_course.group(1).split()[0]
+            name = match_course.group(2)
+            credits = int(match_course.group(3))
+            grade = match_course.group(4)
+            grade = "N/A" if grade == "" else grade
             parsed_courses_by_year[current_academic_year].append(
-                (parsed_course_code, parsed_course_name, parsed_final_grade, parsed_credit_hours)
+                (code, name, grade, credits)
             )
 
     return parsed_courses_by_year
@@ -52,71 +43,75 @@ def parse_grades_file(file_path: str):
 def map_years_to_academic_years(parsed_courses: dict):
     """
     Maps academic years to year1, year2, etc.
-
-    Args:
-        parsed_courses (dict): Dictionary of courses by academic year.
-
-    Returns:
-        dict: A dictionary mapping `year1`, `year2`, etc., to course details.
     """
-    sorted_academic_years = sorted(parsed_courses.keys())  # Sort academic years
-    # noinspection PyShadowingNames
-    mapped_years = {
-        f"year{i+1}": parsed_courses[academic_year]
-        for i, academic_year in enumerate(sorted_academic_years)
-    }
-    return mapped_years
+    sorted_years = sorted(parsed_courses.keys())
+    return {f"year{i+1}": parsed_courses[y] for i, y in enumerate(sorted_years)}
 
 
 if __name__ == "__main__":
-    # First, run the grades extractor to get the latest grades
-    print("Fetching latest grades...")
+    # Prompt for browser, username, and password
+    browser = input("Which browser would you like to use? (chrome/safari): ").strip().lower()
+    username = input("Enter your username: ").strip()
+    password = input("Enter your password: ").strip()
+
+    print(f"Using browser: {browser}")
+    print("Fetching student information and latest grades...")
+
     try:
-        venv_python = "./venv/bin/python"
-        subprocess.run([venv_python, "grades_extractor_chrome.py"], check=True)
-        print("Successfully fetched latest grades.")
-        print('='*100)
+        venv_python = os.path.join('.', 'venv', 'bin', 'python')
+        extractor = "grades_extractor_safari.py" if browser == "safari" else "grades_extractor_chrome.py"
+        subprocess.run([venv_python, extractor, username, password], check=True)
+        print("Successfully fetched student information and grades.")
+        print("\n")  # spacing
+        print('=' * 100)
     except subprocess.CalledProcessError as e:
         print(f"Error fetching grades: {e}")
         exit(1)
 
-    # Parse the grades file
-    grades_file_path = "printer_friendly_grades.txt"
-    courses_by_academic_year = parse_grades_file(grades_file_path)
+    grades_file = "printer_friendly_grades.txt"
+    info_file = "student_information.txt"
 
-    # Map academic years to year1, year2, etc.
-    mapped_courses_by_year = map_years_to_academic_years(courses_by_academic_year)
+    try:
+        courses_by_year = parse_grades_file(grades_file)
+        mapped = map_years_to_academic_years(courses_by_year)
 
-    # Create the Student object
-    mohamed = Student("Mohamed Elsabah", 373007, None, ("Computer Science", "Mathematics"))
+        # Read student info
+        with open(info_file, "r", encoding="utf-8") as f:
+            info_lines = f.readlines()
 
-    # Create the Courses object and associate it with the Student
-    courses_obj = Courses(mohamed)  # Renamed to avoid shadowing
+        name = "Unknown"
+        student_id = 0
+        majors = ()
+        minors = ()
+        for line in info_lines:
+            if line.startswith("Name:"):
+                name = line.split(":", 1)[1].strip()
+            elif line.startswith("Student ID:"):
+                student_id = int(line.split(":", 1)[1].strip())
+            elif line.startswith("Majors:"):
+                majors = tuple(x.strip() for x in line.split(":", 1)[1].split(","))
+            elif line.startswith("Minors:"):
+                minors = tuple(x.strip() for x in line.split(":", 1)[1].split(","))
 
-    # Add courses to the Courses object
-    for academic_year, academic_courses in mapped_courses_by_year.items():
-        year_index = int(academic_year[-1])  # Extract year number from "year1", "year2", etc.
-        for course_details in academic_courses:
-            parsed_course_code, parsed_course_name, parsed_course_grade, parsed_course_credits = course_details
-            if parsed_course_grade.isdigit():  # If the grade is numeric
-                mark = Mark(int(parsed_course_grade))
-            elif parsed_course_grade.upper() in ["P", "N/A", "DSC", "E"]:  # Handle special grades
-                mark = Mark(parsed_course_grade.upper())
-            else:
-                raise ValueError(f"Unexpected grade format: {parsed_course_grade}")
-            courses_obj.add_course(
-                (parsed_course_code, parsed_course_name, mark, parsed_course_credits), academic_year=year_index
-            )
+        student = Student(name, student_id, None, majors, minors)
+        courses_obj = Courses(student)
 
-    # Link the Courses object back to the Student
-    mohamed.set_courses(courses_obj)
+        for year_key, course_list in mapped.items():
+            year_idx = int(year_key[-1])
+            for code, cname, cgrade, creds in course_list:
+                if cgrade.isdigit():
+                    mark = Mark(int(cgrade))
+                else:
+                    mark = Mark(cgrade.upper())
+                courses_obj.add_course((code, cname, mark, creds), academic_year=year_idx)
 
-    # Print student information
-    print(mohamed)
-    print()  # Add a blank line before scholarships
+        student.set_courses(courses_obj)
 
-    # Calculate scholarships for each year
-    print("Scholarship Eligibility:")
-    print("=" * 100)
-    for year in range(1, len(mapped_courses_by_year) + 1):
-        print(mohamed.get_courses().calculate_scholarship(year))
+        print(student)
+        print()
+        print("Scholarship Eligibility:")
+        print("=" * 100)
+        for i in range(1, len(mapped) + 1):
+            print(student.get_courses().calculate_scholarship(i))
+    except FileNotFoundError as e:
+        print(f"Error: {e}")
