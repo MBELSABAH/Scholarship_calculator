@@ -50,9 +50,9 @@ def map_years_to_academic_years(parsed_courses: dict):
 
 if __name__ == "__main__":
     # Prompt for browser, username, and password
-    browser = input("Which browser would you like to use? (chrome/safari): ").strip().lower()
-    username = input("Enter your username: ").strip()
-    password = input("Enter your password: ").strip()
+    browser = "chrome" #input("Which browser would you like to use? (chrome/safari): ").strip().lower()
+    username = "mbelsabah" #input("Enter your username: ").strip()
+    password = "Brimxl12!" #input("Enter your password: ").strip()
 
     print(f"Using browser: {browser}")
     print("Fetching student information and latest grades...")

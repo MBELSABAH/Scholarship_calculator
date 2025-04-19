@@ -1,5 +1,3 @@
-Name: Chatterjee, Dana
-Student ID: 0348769
-Cumulative GPA: 4.146
-Majors: Biotechnology
+Cumulative GPA: 4.011
+Majors: Computer Science, Mathematics
 Minors: None
