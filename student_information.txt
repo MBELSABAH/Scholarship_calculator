@@ -1,5 +1,5 @@
-Name: Elsabah, Mohamed B.
-Student ID: 0373007
-Cumulative GPA: 4.011
-Majors: Computer Science, Mathematics
+Name: Ahmed, Yousef M.
+Student ID: 0362435
+Cumulative GPA: 3.621
+Majors: Engineering
 Minors: None

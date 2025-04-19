@@ -97,9 +97,10 @@ class Courses(object):
 
         if total_credit_hours == 0:
             return f"Year {academic_year} - No courses taken in the academic year to calculate scholarship."
-        elif total_credit_hours < 30:
+        elif total_credit_hours < 18:
             return (f"Year {academic_year} - Not enough courses taken in the academic year to calculate scholarship."
-                    f" Minimum credits required: 30, current credits: {total_credit_hours}")
+                    f" Minimum year credits required: 18, current credits: {total_credit_hours}"
+                    )
 
         weighted_average = total_weighted_marks / total_credit_hours
 

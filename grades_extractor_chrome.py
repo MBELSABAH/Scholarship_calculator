@@ -68,7 +68,7 @@ if __name__ == "__main__":
     username, password = sys.argv[1], sys.argv[2]
 
     chrome_opts = Options()
-    # chrome_opts.add_argument("--headless")
+    chrome_opts.add_argument("--headless")
     chrome_opts.add_argument("--disable-gpu")
     chrome_opts.add_argument("--no-sandbox")
     chrome_opts.add_argument("--disable-dev-shm-usage")
