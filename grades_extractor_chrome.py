@@ -64,7 +64,6 @@ def infer_academic_year(start_date: str) -> int:
         year -= 1
     return year
 
-
 if __name__ == "__main__":
     username, password = sys.argv[1], sys.argv[2]
 
@@ -79,9 +78,7 @@ if __name__ == "__main__":
     try:
         # 1) Login
         driver.get("https://collprodss.colleague.upei.ca/Student/Account/Login")
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "UserName"))
-        )
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "UserName")))
         driver.find_element(By.ID, "UserName").clear()
         driver.find_element(By.ID, "Password").clear()
         time.sleep(0.5)
@@ -107,22 +104,16 @@ if __name__ == "__main__":
 
         # 3) Navigate to Grades page
         driver.get("https://collprodss.colleague.upei.ca/Student/Student/Grades")
-        WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "print-grade-label"))
-        )
+        WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "print-grade-label")))
         print("Navigated to Grades page.")
 
         # 4) Open term selection panel
-        toggle = WebDriverWait(driver, 10).until(
-            EC.element_to_be_clickable((By.ID, "print-grade-label"))
-        )
+        toggle = WebDriverWait(driver, 10).until(EC.element_to_be_clickable((By.ID, "print-grade-label")))
         toggle.click()
         print("Opened term selection panel.")
 
         # 5) Select all term checkboxes via labels
-        terms_ul = WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.ID, "student-terms-ul"))
-        )
+        terms_ul = WebDriverWait(driver, 10).until(EC.presence_of_element_located((By.ID, "student-terms-ul")))
         labels = terms_ul.find_elements(By.TAG_NAME, "label")
         for lbl in labels:
             try:
@@ -141,17 +132,35 @@ if __name__ == "__main__":
         print("Clicked final Print, awaiting new window...")
 
         # 7) Switch to new printer-friendly tab
-        WebDriverWait(driver, 10).until(
-            lambda d: len(d.window_handles) > len(orig_handles)
-        )
+        WebDriverWait(driver, 10).until(lambda d: len(d.window_handles) > len(orig_handles))
         new = [h for h in driver.window_handles if h not in orig_handles][0]
         driver.switch_to.window(new)
         print("Switched to printer-friendly window.")
         time.sleep(1)
 
+        # ——— extract student name & ID from the printed page ———
+        name_elem = WebDriverWait(driver, 10).until(
+            EC.presence_of_element_located((By.XPATH,
+                "//*[@id='student-grades']//span[text()='Student Name:']/following-sibling::span"
+            ))
+        )
+        student_name = name_elem.text.strip()
+        id_elem = driver.find_element(
+            By.XPATH,
+            "//*[@id='student-grades']//span[text()='Student ID:']/following-sibling::span"
+        )
+        student_id = id_elem.text.strip()
+
+        # prepend to student_information.txt
+        with open("student_information.txt", "r+", encoding="utf-8") as info_file:
+            existing = info_file.read()
+            info_file.seek(0)
+            info_file.write(f"Name: {student_name}\nStudent ID: {student_id}\n{existing}")
+        print(f"Prepended Name: {student_name}, ID: {student_id} to student_information.txt")
+
         # 8) Scrape table rows
         WebDriverWait(driver, 10).until(
-            EC.presence_of_element_located((By.XPATH, "//table[contains(@class,'student-grade-table')]") )
+            EC.presence_of_element_located((By.XPATH, "//table[contains(@class,'student-grade-table')]"))
         )
         rows = driver.find_elements(By.XPATH, "//table[contains(@class,'student-grade-table')]/tbody/tr")
 
