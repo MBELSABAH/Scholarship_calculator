@@ -1,4 +1,5 @@
 import subprocess
+import sys
 from Student import Student
 from Courses import Courses
 from Mark import Mark
@@ -31,8 +32,7 @@ def parse_grades_file(file_path: str):
             code = match_course.group(1).split()[0]
             name = match_course.group(2)
             credits = int(match_course.group(3))
-            grade = match_course.group(4)
-            grade = "N/A" if grade == "" else grade
+            grade = match_course.group(4) or "N/A"
             parsed_courses_by_year[current_academic_year].append(
                 (code, name, grade, credits)
             )
@@ -49,41 +49,40 @@ def map_years_to_academic_years(parsed_courses: dict):
 
 
 if __name__ == "__main__":
-    # Prompt for browser, username, and password
+    # 1) Ask for browser & credentials
     browser = input("Which browser would you like to use? (chrome/safari): ").strip().lower()
     username = input("Enter your username: ").strip()
     password = input("Enter your password: ").strip()
 
-    print(f"Using browser: {browser}")
-    print("Fetching student information and latest grades...")
+    print(f"\nUsing browser: {browser}")
+    print("Fetching student information and latest grades...\n")
 
     try:
-        venv_python = os.path.join('.', 'venv', 'bin', 'python')
+        # 2) Launch extractor with the same Python interpreter as this script
+        venv_python = sys.executable
+
         extractor = "grades_extractor_safari.py" if browser == "safari" else "grades_extractor_chrome.py"
         subprocess.run([venv_python, extractor, username, password], check=True)
-        print("Successfully fetched student information and grades.")
-        print("\n")  # spacing
-        print('=' * 100)
+
+        print("\nSuccessfully fetched student information and grades.")
+        print("=" * 100, "\n")
     except subprocess.CalledProcessError as e:
         print(f"Error fetching grades: {e}")
         exit(1)
 
+    # 3) Parse and display
     grades_file = "printer_friendly_grades.txt"
-    info_file = "student_information.txt"
+    info_file   = "student_information.txt"
 
     try:
-        # 1) parse
         courses_by_year = parse_grades_file(grades_file)
         mapped = map_years_to_academic_years(courses_by_year)
 
-        # 2) read student info
+        # Read student info
         with open(info_file, "r", encoding="utf-8") as f:
             info_lines = f.readlines()
 
-        name = "Unknown"
-        student_id = 0
-        majors = ()
-        minors = ()
+        name, student_id, majors, minors = "Unknown", 0, (), ()
         for line in info_lines:
             if line.startswith("Name:"):
                 name = line.split(":", 1)[1].strip()
@@ -94,54 +93,39 @@ if __name__ == "__main__":
             elif line.startswith("Minors:"):
                 minors = tuple(x.strip() for x in line.split(":", 1)[1].split(","))
 
-        # 3) build objects
+        # Build objects
         student = Student(name, student_id, None, majors, minors)
         courses_obj = Courses(student)
-        for year_key, course_list in mapped.items():
-            year_idx = int(year_key[-1])
-            for code, cname, cgrade, creds in course_list:
-                if cgrade.isdigit():
-                    mark = Mark(int(cgrade))
-                else:
-                    mark = Mark(cgrade.upper())
+        for ykey, clist in mapped.items():
+            year_idx = int(ykey[-1])
+            for code, cname, cgrade, creds in clist:
+                mark = Mark(int(cgrade)) if cgrade.isdigit() else Mark(cgrade.upper())
                 courses_obj.add_course((code, cname, mark, creds), academic_year=year_idx)
         student.set_courses(courses_obj)
 
-        # ---- REPLACED PRINTING ----
-
-        # Header
+        # Print header
         print(f"Name: {name}")
         print(f"Student ID: {student_id}")
         print(f"Major(s): {', '.join(m.title() for m in majors)}")
         print(f"Minor(s): {', '.join(m.title() for m in minors) or 'None'}")
-        # Cumulative GPA line (two lines)
-        cgpa_block = courses_obj.calculate_cumulative_gpa().split("\n")
-        for line in cgpa_block:
-            print(line)
+        print(courses_obj.calculate_cumulative_gpa())
         print("=" * 100)
 
         # Completed Courses by year
         print("Completed Courses by year:")
-        sorted_spans = sorted(courses_by_year.keys())
-        for idx, span in enumerate(sorted_spans, start=1):
+        for idx, span in enumerate(sorted(courses_by_year.keys()), start=1):
             print(f"\nAcademic Year {span} (year {idx}):")
             print("=" * 100)
             for i, (code, cname, cgrade, creds) in enumerate(courses_by_year[span], start=1):
-                if cgrade.isdigit():
-                    mark = Mark(int(cgrade))
-                else:
-                    mark = Mark(cgrade.upper())
+                mark = Mark(int(cgrade)) if cgrade.isdigit() else Mark(cgrade.upper())
                 print(f"{i}. Course: {code} ({cname}), {mark}, Credit Hours: {creds}")
             print("=" * 100)
 
         # Scholarship Eligibility
         print("\nScholarship Eligibility:")
         print("=" * 100)
-        for idx, span in enumerate(sorted_spans, start=1):
+        for idx, span in enumerate(sorted(courses_by_year.keys()), start=1):
             line = courses_obj.calculate_scholarship(idx)
-            # swap "Year X" → "Academic Year span (year X)"
-            line = line.replace(f"Year {idx}", f"Academic Year {span} (year {idx})")
-            print(line)
-
+            print(line.replace(f"Year {idx}", f"Academic Year {span} (year {idx})"))
     except FileNotFoundError as e:
         print(f"Error: {e}")
