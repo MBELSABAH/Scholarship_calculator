@@ -22,10 +22,10 @@ MATH-1910T-05 2023-09-06 - 2023-12-22 | Math 1910 Tutorial | 0 credits | Final G
 
 --- Academic Year 2024-2025 ---
 MATH-2420-01 2025-05-12 - 2025-06-19 | Combinatorics I | 3 credits | Final Grade: 
-CS-2060-01 2025-01-06 - 2025-04-28 | Web Development, Programming | 3 credits | Final Grade: 
-CS-2520-01 2025-01-06 - 2025-04-28 | Computer Org. and Architecture | 3 credits | Final Grade: 
-CS-2820-02 2025-01-06 - 2025-04-28 | Programming Practices | 3 credits | Final Grade: 
-CS-2920-01 2025-01-06 - 2025-04-28 | Data Structures and Algorithms | 3 credits | Final Grade: 
+CS-2060-01 2025-01-06 - 2025-04-28 | Web Development, Programming | 3 credits | Final Grade: 98
+CS-2520-01 2025-01-06 - 2025-04-28 | Computer Org. and Architecture | 3 credits | Final Grade: 93
+CS-2820-02 2025-01-06 - 2025-04-28 | Programming Practices | 3 credits | Final Grade: 97
+CS-2920-01 2025-01-06 - 2025-04-28 | Data Structures and Algorithms | 3 credits | Final Grade: 93
 MATH-2720-01 2025-01-06 - 2025-04-28 | Mathematical Reasoning | 3 credits | Final Grade: 97
 POLS-2120-01 2025-01-06 - 2025-04-28 | Law, Pol, Judicial Process II | 3 credits | Final Grade: 99
 CS-2620-01 2024-09-04 - 2024-12-23 | Comp Programming Languages | 3 credits | Final Grade: 93

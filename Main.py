@@ -64,8 +64,8 @@ if __name__ == "__main__":
         extractor = "grades_extractor_safari.py" if browser == "safari" else "grades_extractor_chrome.py"
         subprocess.run([venv_python, extractor, username, password], check=True)
 
-        print("\nSuccessfully fetched student information and grades.")
-        print("=" * 100, "\n")
+        print("\nSuccessfully fetched student information and grades.\n")
+        print("=" * 100)
     except subprocess.CalledProcessError as e:
         print(f"Error fetching grades: {e}")
         exit(1)
