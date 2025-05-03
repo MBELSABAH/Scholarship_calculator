@@ -79,7 +79,7 @@ Academic Year 2024-2025 (year 3) - Not enough courses taken in the academic year
 ## 🧠 Notes
 
 - Lab and tutorial sections with `0 credits` are skipped
-- Handles special grades: `DSC` (Discontinued), `P` (Pass), `E` (Error/0%)
+- Handles special grades: `DSC` (Discontinued), `P` (Pass), `E` (Excluded/0%)
 - GPA only considers highest grade for repeated course codes (ignores section differences)
 - Browser automation is headless by default (no GUI pops up)
 
