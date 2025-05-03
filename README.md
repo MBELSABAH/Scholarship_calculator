@@ -57,7 +57,7 @@ grades-extractor/
 
 ```
 Name: I Solo Your Boyfriend
-Student ID: 0362435
+Student ID: 42069
 Major(s): Professional Yapper
 Minor(s): Narcissism
 Cumulative GPA: 4.2
