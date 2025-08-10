@@ -56,10 +56,10 @@ grades-extractor/
 ## 📋 Example Output
 
 ```
-Name: I Solo Your Boyfriend
-Student ID: 42069
-Major(s): Professional Yapper
-Minor(s): Narcissism
+Name: Mohamed ELsabah
+Student ID: 0312345
+Major(s): Computer Science, Mathematics
+Minor(s): Business
 Cumulative GPA: 4.2
 Total Credit Hours: 69
 ====================================================================================================
