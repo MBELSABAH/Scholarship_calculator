@@ -1,0 +1,41 @@
+# Python cache and bytecode
+__pycache__/
+*.py[cod]
+*$py.class
+
+# Virtual environments
+venv/
+.venv/
+env/
+ENV/
+
+# Environment variables and local secrets
+.env
+.env.*
+*.env
+
+# Local IDE/editor files
+.vscode/
+.idea/
+.DS_Store
+
+# Generated academic output files
+student_information.txt
+printer_friendly_grades.txt
+outputs/
+reports/local/
+
+# Selenium / browser artifacts
+*.log
+chromedriver.log
+geckodriver.log
+
+# Test and coverage outputs
+.pytest_cache/
+.coverage
+htmlcov/
+
+# Build/distribution artifacts
+build/
+dist/
+*.egg-info/
