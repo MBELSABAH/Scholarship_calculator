@@ -52,8 +52,19 @@ class AcademicAgentToolTests(unittest.TestCase):
         self.assertEqual(len(result["academic_years"][0]["courses"]), 2)
         course = result["academic_years"][0]["courses"][0]
         self.assertEqual(
-            set(course), {"code", "base_code", "name", "grade", "gpa", "letter", "credits"}
+            set(course),
+            {
+                "code",
+                "base_code",
+                "name",
+                "grade",
+                "gpa",
+                "letter",
+                "credits",
+                "performance_band",
+            },
         )
+        self.assertEqual(course["performance_band"], "excellent")
 
     def test_project_gpa_uses_mark_mapping_and_python_math(self):
         result = project_gpa(

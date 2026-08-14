@@ -68,11 +68,25 @@ class CourseRecord(BaseModel):
     gpa: float | str
     letter: str
     credits: float
+    performance_band: Literal[
+        "excellent", "strong", "good", "needs_improvement", "low", "neutral"
+    ] = "neutral"
+
+
+class AcademicYearStatistics(BaseModel):
+    total_courses: int
+    graded_courses: int
+    non_graded_courses: int
+    grade_bands: dict[str, int]
 
 
 class AcademicYear(BaseModel):
     year: str
     weighted_average: float | None
+    performance_band: Literal[
+        "excellent", "strong", "good", "needs_improvement", "low", "neutral"
+    ] = "neutral"
+    statistics: AcademicYearStatistics
     scholarship_amount: int | None
     calculation_status: Literal["calculated", "not_calculated"]
     scholarship_status: Literal[

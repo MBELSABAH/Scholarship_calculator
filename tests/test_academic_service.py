@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import unittest
 
-from backend.academic_service import build_academic_snapshot, load_demo_record
+from backend.academic_service import (
+    build_academic_snapshot,
+    classify_performance_band,
+    load_demo_record,
+)
 from backend.models import ConnectRequest
 
 
@@ -131,6 +135,64 @@ class AcademicServiceTests(unittest.TestCase):
         self.assertIsNone(snapshot.scholarship_summary.latest_acquired_year)
         self.assertIsNone(snapshot.scholarship_summary.latest_acquired_amount)
         self.assertIsNone(snapshot.scholarship_summary.latest_acquired_weighted_average)
+
+    def test_year_statistics_use_mutually_exclusive_numeric_bands(self):
+        grades = [95, 93, 88, 84, 77, 71, 66, 58, "P", "DSC"]
+        scraped = {
+            "student": {
+                "name": "Statistics Student",
+                "student_id": "1234567",
+                "majors": ["Computer Science"],
+                "minors": [],
+            },
+            "courses": [
+                {
+                    "academic_year": "2025-2026",
+                    "code": f"STAT-{index:04d}-01",
+                    "name": f"Statistics Course {index}",
+                    "grade": str(grade),
+                    "credits": 3,
+                }
+                for index, grade in enumerate(grades, start=1)
+            ],
+        }
+
+        statistics = build_academic_snapshot(scraped).academic_years[0].statistics
+
+        self.assertEqual(statistics.total_courses, 10)
+        self.assertEqual(statistics.graded_courses, 8)
+        self.assertEqual(statistics.non_graded_courses, 2)
+        self.assertEqual(
+            statistics.grade_bands,
+            {
+                "90_100": 2,
+                "80_89": 2,
+                "70_79": 2,
+                "60_69": 1,
+                "below_60": 1,
+            },
+        )
+
+    def test_performance_band_boundaries_and_special_grades(self):
+        cases = {
+            90: "excellent",
+            89: "strong",
+            80: "strong",
+            79: "good",
+            70: "good",
+            69: "needs_improvement",
+            60: "needs_improvement",
+            59: "low",
+            "P": "neutral",
+            "DSC": "neutral",
+            "N/A": "neutral",
+            "E": "neutral",
+        }
+        for grade, expected in cases.items():
+            with self.subTest(grade=grade):
+                self.assertEqual(classify_performance_band(grade), expected)
+
+        self.assertEqual(classify_performance_band(95, credits=0), "neutral")
 
 
 if __name__ == "__main__":

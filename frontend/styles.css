@@ -1887,3 +1887,196 @@ footer p {
   .essay-controls { align-items: flex-start; flex-direction: column; }
   .copilot-panel { padding: 17px 14px; border-radius: 16px; }
 }
+
+/* Presentation-only academic performance bands */
+.performance-legend {
+  margin-top: 16px;
+  padding: 10px 13px;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px 14px;
+  border: 1px solid #dde5e0;
+  border-radius: 11px;
+  color: #697871;
+  background: rgba(255, 255, 255, 0.62);
+  font-size: 9.5px;
+}
+
+.performance-legend-title {
+  color: #40534a;
+  font-weight: 850;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.performance-legend > span:not(.performance-legend-title) {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+}
+
+.legend-swatch {
+  width: 8px;
+  height: 8px;
+  display: inline-block;
+  border-radius: 50%;
+}
+
+.legend-swatch.excellent { background: #3f78ae; }
+.legend-swatch.strong { background: #3b8062; }
+.legend-swatch.good { background: #a6781d; }
+.legend-swatch.needs-improvement { background: #bd6a2d; }
+.legend-swatch.low { background: #ad4a45; }
+.legend-swatch.neutral { background: #7c8883; }
+
+.academic-year.performance-excellent,
+.course-row.performance-excellent {
+  --performance-accent: #3f78ae;
+  --performance-ink: #285d8d;
+  --performance-tint: rgba(63, 120, 174, 0.065);
+  --performance-badge: #e3eef8;
+}
+
+.academic-year.performance-strong,
+.course-row.performance-strong {
+  --performance-accent: #3b8062;
+  --performance-ink: #286348;
+  --performance-tint: rgba(59, 128, 98, 0.065);
+  --performance-badge: #e4f1ea;
+}
+
+.academic-year.performance-good,
+.course-row.performance-good {
+  --performance-accent: #a6781d;
+  --performance-ink: #79560f;
+  --performance-tint: rgba(166, 120, 29, 0.07);
+  --performance-badge: #f7edcf;
+}
+
+.academic-year.performance-needs_improvement,
+.course-row.performance-needs_improvement {
+  --performance-accent: #bd6a2d;
+  --performance-ink: #8f4a18;
+  --performance-tint: rgba(189, 106, 45, 0.065);
+  --performance-badge: #f9e8da;
+}
+
+.academic-year.performance-low,
+.course-row.performance-low {
+  --performance-accent: #ad4a45;
+  --performance-ink: #843833;
+  --performance-tint: rgba(173, 74, 69, 0.06);
+  --performance-badge: #f8e5e3;
+}
+
+.academic-year.performance-neutral,
+.course-row.performance-neutral {
+  --performance-accent: #7c8883;
+  --performance-ink: #57635e;
+  --performance-tint: rgba(124, 136, 131, 0.055);
+  --performance-badge: #ecefed;
+}
+
+.academic-year > summary {
+  min-height: 112px;
+  padding: 17px 22px 15px;
+  grid-template-columns: minmax(150px, 1fr) auto auto 24px;
+  grid-template-rows: auto auto;
+  gap: 12px 24px;
+  box-shadow: inset 4px 0 0 var(--performance-accent);
+  background: linear-gradient(90deg, var(--performance-tint), rgba(255, 255, 255, 0.28) 44%);
+}
+
+.academic-year > summary:hover {
+  background: linear-gradient(90deg, var(--performance-tint), rgba(247, 250, 247, 0.82) 48%);
+}
+
+.academic-year .year-average strong {
+  color: var(--performance-ink);
+}
+
+.year-stat-chips {
+  min-width: 0;
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.year-stat-chip {
+  min-height: 25px;
+  padding: 4px 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  border: 1px solid transparent;
+  border-radius: 8px;
+  font-size: 9px;
+  font-weight: 720;
+}
+
+.year-stat-chip strong {
+  font-size: 10px;
+}
+
+.year-stat-chip.excellent { color: #285d8d; border-color: #c9dceb; background: #edf5fb; }
+.year-stat-chip.strong { color: #286348; border-color: #cde1d5; background: #edf6f1; }
+.year-stat-chip.good { color: #79560f; border-color: #e8d8ad; background: #fbf5e5; }
+.year-stat-chip.needs_improvement { color: #8f4a18; border-color: #edcfb8; background: #fcf1e9; }
+.year-stat-chip.low { color: #843833; border-color: #e8c8c5; background: #fcf0ef; }
+
+.course-row td {
+  background: var(--performance-tint);
+  transition: background 140ms ease;
+}
+
+.course-row td:first-child {
+  box-shadow: inset 4px 0 0 var(--performance-accent);
+}
+
+.course-row:hover td {
+  background: color-mix(in srgb, var(--performance-tint) 72%, #ffffff 28%);
+}
+
+.course-row .grade-pill {
+  color: var(--performance-ink);
+  background: var(--performance-badge);
+  outline: 1px solid color-mix(in srgb, var(--performance-accent) 24%, transparent);
+}
+
+@media (max-width: 640px) {
+  .performance-legend {
+    gap: 7px 11px;
+  }
+
+  .performance-legend-title {
+    width: 100%;
+  }
+
+  .academic-year > summary {
+    min-height: 104px;
+    padding: 15px 16px;
+    grid-template-columns: minmax(0, 1fr) 24px;
+    grid-template-rows: auto auto;
+    gap: 12px;
+  }
+
+  .academic-year-title {
+    grid-column: 1;
+  }
+
+  .academic-year .chevron {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  .year-stat-chips {
+    grid-column: 1 / -1;
+  }
+
+  .year-stat-chip {
+    flex: 1 1 68px;
+    justify-content: space-between;
+  }
+}

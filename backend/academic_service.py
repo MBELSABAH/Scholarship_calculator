@@ -13,6 +13,7 @@ from Student import Student
 from backend.models import (
     AcademicSnapshot,
     AcademicYear,
+    AcademicYearStatistics,
     CourseRecord,
     DegreeProgress,
     ScholarshipSummary,
@@ -109,6 +110,56 @@ def _parse_scholarship_result(
     )
 
 
+def classify_performance_band(grade: Any, *, credits: float = 1) -> str:
+    """Classify presentation-only performance without changing academic rules."""
+    if (
+        isinstance(grade, bool)
+        or not isinstance(grade, (int, float))
+        or not 0 <= float(grade) <= 100
+        or credits <= 0
+    ):
+        return "neutral"
+    numeric_grade = float(grade)
+    if numeric_grade >= 90:
+        return "excellent"
+    if numeric_grade >= 80:
+        return "strong"
+    if numeric_grade >= 70:
+        return "good"
+    if numeric_grade >= 60:
+        return "needs_improvement"
+    return "low"
+
+
+def calculate_year_statistics(courses: list[CourseRecord]) -> AcademicYearStatistics:
+    """Count mutually exclusive numeric grade bands for visible course records."""
+    grade_bands = {
+        "90_100": 0,
+        "80_89": 0,
+        "70_79": 0,
+        "60_69": 0,
+        "below_60": 0,
+    }
+    band_keys = {
+        "excellent": "90_100",
+        "strong": "80_89",
+        "good": "70_79",
+        "needs_improvement": "60_69",
+        "low": "below_60",
+    }
+    for course in courses:
+        key = band_keys.get(course.performance_band)
+        if key:
+            grade_bands[key] += 1
+    graded_courses = sum(grade_bands.values())
+    return AcademicYearStatistics(
+        total_courses=len(courses),
+        graded_courses=graded_courses,
+        non_graded_courses=len(courses) - graded_courses,
+        grade_bands=grade_bands,
+    )
+
+
 def build_academic_snapshot(
     scraped_record: dict[str, Any], *, source: str = "live"
 ) -> AcademicSnapshot:
@@ -179,12 +230,17 @@ def build_academic_snapshot(
                     gpa=mark.gpa,
                     letter=mark.letter,
                     credits=float(course.get("credits") or 0),
+                    performance_band=classify_performance_band(
+                        grade, credits=float(course.get("credits") or 0)
+                    ),
                 )
             )
         academic_years.append(
             AcademicYear(
                 year=year,
                 weighted_average=weighted_average,
+                performance_band=classify_performance_band(weighted_average),
+                statistics=calculate_year_statistics(course_records),
                 scholarship_amount=amount,
                 calculation_status=calculation_status,
                 scholarship_status=status,

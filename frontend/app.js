@@ -51,6 +51,23 @@ const formatCurrency = (value) => value === null || value === undefined ? "—" 
 
 const formatYear = (year) => escapeHtml(String(year).replace("-", "–"));
 
+const performanceMeta = {
+  excellent: { label: "Excellent", range: "90–100" },
+  strong: { label: "Strong", range: "80–89" },
+  good: { label: "Good", range: "70–79" },
+  needs_improvement: { label: "Needs improvement", range: "60–69" },
+  low: { label: "Low / failing range", range: "Below 60" },
+  neutral: { label: "Non-graded", range: "Special grade" },
+};
+
+const gradeBandChips = [
+  ["90_100", "90+", "excellent"],
+  ["80_89", "80–89", "strong"],
+  ["70_79", "70–79", "good"],
+  ["60_69", "60–69", "needs_improvement"],
+  ["below_60", "<60", "low"],
+];
+
 function officialSourceUrl(rawUrl) {
   try {
     const url = new URL(rawUrl);
@@ -633,20 +650,31 @@ function renderDashboard(snapshot) {
       </article>`;
   }).join("");
 
-  document.querySelector("#academic-years").innerHTML = years.slice().reverse().map((year, index) => `
-    <details class="academic-year" ${index === 0 ? "open" : ""}>
+  document.querySelector("#academic-years").innerHTML = years.slice().reverse().map((year, index) => {
+    const statistics = year.statistics;
+    const courseSummary = [
+      `${statistics.total_courses} ${statistics.total_courses === 1 ? "course" : "courses"}`,
+      `${statistics.graded_courses} graded`,
+      statistics.non_graded_courses ? `${statistics.non_graded_courses} non-graded` : null,
+    ].filter(Boolean).join(" · ");
+    const chips = gradeBandChips.map(([key, label, band]) => `
+      <span class="year-stat-chip ${band}"><span>${escapeHtml(label)}</span><strong>${statistics.grade_bands[key]}</strong></span>`).join("");
+    return `
+    <details class="academic-year performance-${escapeHtml(year.performance_band)}" ${index === 0 ? "open" : ""}>
       <summary>
-        <span class="academic-year-title"><strong>${formatYear(year.year)}</strong><span>${year.courses.length} ${year.courses.length === 1 ? "course" : "courses"}</span></span>
-        <span class="year-metric"><span>Weighted average</span><strong>${year.weighted_average === null ? "—" : `${formatNumber(year.weighted_average, 2)}%`}</strong></span>
+        <span class="academic-year-title"><strong>${formatYear(year.year)}</strong><span>${escapeHtml(courseSummary)}</span></span>
+        <span class="year-metric year-average"><span>Weighted average</span><strong>${year.weighted_average === null ? "—" : `${formatNumber(year.weighted_average, 2)}%`}</strong></span>
         <span class="year-metric"><span>Scholarship</span><strong>${year.calculation_status === "not_calculated" ? "Not calculated" : escapeHtml(formatCurrency(year.scholarship_amount))}</strong></span>
         <span class="chevron" aria-hidden="true">⌄</span>
+        <span class="year-stat-chips" aria-label="Exclusive numeric grade bands">${chips}</span>
       </summary>
       <div class="course-table-wrap"><table class="course-table">
         <thead><tr><th>Course</th><th>Name</th><th>Grade</th><th>Letter</th><th>GPA</th><th>Credits</th></tr></thead>
         <tbody>${year.courses.map((course) => `
-          <tr><td>${escapeHtml(course.code)}</td><td>${escapeHtml(course.name)}</td><td><span class="grade-pill">${escapeHtml(course.grade)}</span></td><td>${escapeHtml(course.letter)}</td><td>${escapeHtml(course.gpa)}</td><td>${formatNumber(course.credits)}</td></tr>`).join("")}</tbody>
+          <tr class="course-row performance-${escapeHtml(course.performance_band)}"><td>${escapeHtml(course.code)}</td><td>${escapeHtml(course.name)}</td><td><span class="grade-pill" title="${escapeHtml(performanceMeta[course.performance_band].label)} · ${escapeHtml(performanceMeta[course.performance_band].range)}">${escapeHtml(course.grade)}${typeof course.grade === "number" ? "%" : ""}</span></td><td>${escapeHtml(course.letter)}</td><td>${escapeHtml(course.gpa)}</td><td>${formatNumber(course.credits)}</td></tr>`).join("")}</tbody>
       </table></div>
-    </details>`).join("");
+    </details>`;
+  }).join("");
   loginView.hidden = true;
   dashboardView.hidden = false;
   window.scrollTo({ top: 0 });

@@ -28,6 +28,7 @@
     {"academic_year": "2025-2026", "code": "CS-2920-01", "name": "Software Engineering", "grade": "92", "credits": 3},
     {"academic_year": "2025-2026", "code": "MATH-3010-01", "name": "Numerical Analysis", "grade": "91", "credits": 3},
     {"academic_year": "2025-2026", "code": "CS-3310-01", "name": "Database Systems", "grade": "94", "credits": 3},
-    {"academic_year": "2025-2026", "code": "CS-3410-01", "name": "Operating Systems", "grade": "93", "credits": 3}
+    {"academic_year": "2025-2026", "code": "CS-3410-01", "name": "Operating Systems", "grade": "93", "credits": 3},
+    {"academic_year": "2025-2026", "code": "COOP-0990-01", "name": "Co-op Preparation Requirement", "grade": "P", "credits": 0}
   ]
 }
