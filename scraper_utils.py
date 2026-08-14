@@ -31,8 +31,10 @@ def parse_progress_text(text: str) -> dict[str, Any]:
     lines = [line.strip() for line in text.splitlines() if line.strip()]
     result: dict[str, Any] = {
         "portal_cumulative_gpa": None,
+        "faculty": None,
         "majors": [],
         "minors": [],
+        "year_of_study": None,
     }
 
     gpa_match = re.search(r"Cumulative GPA:\s*([0-9.]+)", text, re.IGNORECASE)
@@ -58,6 +60,16 @@ def parse_progress_text(text: str) -> dict[str, Any]:
 
     result["majors"] = values_after("Majors")
     result["minors"] = values_after("Minors")
+    faculty_match = re.search(r"^(?:Faculty|School):\s*(.+)$", text, re.IGNORECASE | re.MULTILINE)
+    if faculty_match:
+        result["faculty"] = faculty_match.group(1).strip()
+    year_match = re.search(
+        r"^(?:Year of Study|Academic Level|Class Level):\s*(?:Year\s*)?([1-6])\b",
+        text,
+        re.IGNORECASE | re.MULTILINE,
+    )
+    if year_match:
+        result["year_of_study"] = int(year_match.group(1))
     return result
 
 

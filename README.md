@@ -8,9 +8,13 @@ This project demonstrates browser automation, object-oriented Python design, aca
 
 ---
 
-## Academic Copilot web MVP (Phase 1–2)
+## Academic Copilot web MVP (hackathon scholarship agent)
 
-This branch also exposes the existing calculator as a local web product: **“Ask your academic record.”** The current checkpoint includes the secure connection screen, structured `AcademicSnapshot` API, dashboard, course-year accordions, and a sanitized demo record. The DeepSeek agent is intentionally not included yet; it begins only after dashboard approval.
+This branch exposes the existing calculator as a local web product: **“Ask your academic record.”** It includes the secure connection screen, structured `AcademicSnapshot` API, dashboard, course-year accordions, a sanitized demo record, and a DeepSeek-powered assistant grounded in allow-listed semantic tools.
+
+The hackathon workflow adds live scholarship discovery from official UPEI pages, deterministic matching, a session-only student background profile, normalized application fields, draft review, and an explicit approval gate. On desktop the copilot remains in a sticky right sidebar while the dashboard scrolls. Supported browsers also expose a microphone that transcribes speech into the composer without sending it automatically.
+
+“Latest scholarship” has one precise meaning: the most recent positive award from a completed, calculated academic year. Empty/future years use `scholarship_amount: null` with `calculation_status: "not_calculated"`; a valid completed $0 result remains `calculated` but is not selected as the latest acquired award.
 
 The browser scraper now returns profile and course data directly to Python. FastAPI passes that record into the existing `Student`, `Courses`, and `Mark` classes, converts their deterministic results into JSON, and serves a no-build HTML/CSS/JavaScript frontend.
 
@@ -26,23 +30,59 @@ Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Choose **Explore the demo r
 
 The backend and frontend share one local server, so there is no separate frontend build command.
 
+### Configure the academic assistant
+
+Set the key in your shell:
+
+```bash
+export DEEPSEEK_API_KEY="your-key"
+```
+
+Or copy `.env.example` to `.env` and replace the placeholder. `.env` and `.env.*` are ignored; the example file is intentionally tracked. The assistant uses the official `https://api.deepseek.com/chat/completions` endpoint with `deepseek-v4-flash` and non-thinking mode. If no key is configured, `/api/chat` returns a clear configuration error and never substitutes a fake answer.
+
 ### API endpoints
 
 - `POST /api/connect` — accepts a live UPEI connection request or `{ "demo": true }`, calculates a snapshot, and caches only that sanitized snapshot in memory
 - `GET /api/snapshot` — returns the current sanitized snapshot
 - `DELETE /api/snapshot` — clears the in-memory snapshot
+- `POST /api/chat` — answers a question through DeepSeek tool calling against the current in-memory snapshot
+- `POST /api/scholarships/search` — searches official UPEI pages and ranks structured matches against the connected snapshot
+- `GET /api/scholarships` and `GET /api/scholarships/{id}` — return cached ranked matches and one official-source detail view
+- `GET|PUT /api/student-background` — reads or confirms one session-only scholarship background fact
+- `POST /api/scholarships/{id}/applications` — inspects semantic application requirements and prefills known facts
+- `GET /api/applications/{id}` and `PUT /api/applications/{id}/answers` — manage reviewed application state
+- `POST /api/applications/{id}/preview` — validates missing fields, answer approval, and warnings
+- `POST /api/applications/{id}/approve-submit` — accepts only the deterministic `APPROVE_AND_SUBMIT` action
 - `GET /api/health` — local health check
+
+The chat endpoint also accepts `current_view`, `current_scholarship_id`, and `current_application_id`. The conversation ID is optional on the first turn and returned with every successful answer. Only recent user/assistant text is retained in memory; tool payloads, scholarship records, personal background, and applications remain in memory for the current local session.
+
+Public scholarship retrieval is HTTPS-only and restricted to exact confirmed UPEI hosts. It follows only validated redirects, caps response size, strips scripts/styles, parses structured text, and never receives portal credentials, cookies, or the DeepSeek key. If retrieval fails, clearly labelled fake fixture awards are used; they are never represented as current UPEI awards.
+
+The approval endpoint does not fake a live external submission. For a live award it records `approved_manual_official_submission_required`; demo fixtures can record a no-external-action demo submission. This keeps the final action explicit while avoiding an unsafe real application during development.
+
+After configuring the key, run the required live demo prompts with:
+
+```bash
+python3 scripts/live_deepseek_smoke.py
+python3 scripts/live_scholarship_agent_smoke.py
+python3 scripts/live_essay_smoke.py
+```
+
+The runner prints only each prompt, the high-level DeepSeek → Python tool sequence, and the final answer. It does not use or request portal credentials.
 
 ### Credential flow
 
-For the web path, the password arrives in a masked `SecretStr` request field and is passed directly to the selected Python scraper. It is not placed in subprocess arguments, written to either legacy output file, logged, returned to the browser, stored in the snapshot, or sent to an AI provider. Run this local endpoint behind HTTPS before exposing it beyond localhost.
+For the web path, the password arrives in a masked `SecretStr` request field and is passed directly to the selected Python scraper. It is not placed in subprocess arguments, written to either legacy output file, logged, returned to the browser, stored in the snapshot, or sent to an AI provider. DeepSeek receives only the question, concise conversation text, and selected sanitized tool results. Run this local endpoint behind HTTPS before exposing it beyond localhost.
 
 The historical extractor scripts still support their command-line entry points and can generate the local text reports for CLI compatibility. Those generated files are ignored and are not application fixtures.
 
 ### Verify
 
 ```bash
-python -B -m unittest discover -v
+python3 -B -m unittest discover -s tests -v
+node --check frontend/app.js
+git diff --check
 ```
 
 ---
@@ -101,6 +141,8 @@ From a technical perspective, the project is useful because it combines:
 ```text
 Scholarship_calculator/
 ├── backend/                    # FastAPI, AcademicSnapshot models, service layer
+│   ├── agent_service.py        # DeepSeek client, bounded tool loop, chat history
+│   └── agent_tools.py          # Allow-listed deterministic academic tools
 ├── frontend/                   # No-build dashboard (HTML/CSS/JavaScript)
 ├── demo_data/                  # Sanitized fake academic record
 ├── tests/                      # Deterministic service tests

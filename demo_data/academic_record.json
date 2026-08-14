@@ -3,6 +3,8 @@
     "name": "Maya Chen",
     "student_id": "0007007",
     "portal_cumulative_gpa": 4.094,
+    "faculty": "School of Mathematical and Computational Sciences",
+    "year_of_study": 3,
     "majors": ["Computer Science", "Mathematics"],
     "minors": ["Business"]
   },

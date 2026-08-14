@@ -78,7 +78,9 @@ def _parse_gpa_result(result: str) -> tuple[float | None, float]:
     )
 
 
-def _parse_scholarship_result(result: str) -> tuple[float | None, int, str]:
+def _parse_scholarship_result(
+    result: str,
+) -> tuple[float | None, int | None, str, str]:
     average_match = re.search(r"Weighted Average(?: must[^:]*|):\s*([0-9.]+)", result)
     if not average_match:
         average_match = re.search(r"Current:\s*([0-9.]+)", result)
@@ -86,17 +88,24 @@ def _parse_scholarship_result(result: str) -> tuple[float | None, int, str]:
 
     if "Not enough courses" in result:
         status = "insufficient_credits"
+        calculation_status = "not_calculated"
     elif "No courses taken" in result:
         status = "no_courses"
+        calculation_status = "not_calculated"
     elif amount_match:
         status = "eligible"
+        calculation_status = "calculated"
     else:
         status = "not_eligible"
+        calculation_status = "calculated"
 
     return (
         float(average_match.group(1)) if average_match else None,
-        int(amount_match.group(1)) if amount_match else 0,
+        int(amount_match.group(1))
+        if amount_match
+        else (0 if calculation_status == "calculated" else None),
         status,
+        calculation_status,
     )
 
 
@@ -106,7 +115,14 @@ def build_academic_snapshot(
     """Build JSON-ready data while delegating all facts to existing classes."""
     profile = scraped_record.get("student", {})
     raw_courses = scraped_record.get("courses", [])
-    years = sorted({str(course["academic_year"]) for course in raw_courses})
+    declared_years = {
+        str(year.get("year")) if isinstance(year, dict) else str(year)
+        for year in scraped_record.get("academic_years", [])
+        if (year.get("year") if isinstance(year, dict) else year)
+    }
+    years = sorted(
+        {str(course["academic_year"]) for course in raw_courses} | declared_years
+    )
     courses_by_year = {
         year: [course for course in raw_courses if str(course["academic_year"]) == year]
         for year in years
@@ -147,7 +163,9 @@ def build_academic_snapshot(
 
     for year_index, year in enumerate(years, start=1):
         calculation = courses_engine.calculate_scholarship(year_index)
-        weighted_average, amount, status = _parse_scholarship_result(calculation)
+        weighted_average, amount, status, calculation_status = _parse_scholarship_result(
+            calculation
+        )
         course_records: list[CourseRecord] = []
         for course in courses_by_year[year]:
             mark = marks_by_course[id(course)]
@@ -168,6 +186,7 @@ def build_academic_snapshot(
                 year=year,
                 weighted_average=weighted_average,
                 scholarship_amount=amount,
+                calculation_status=calculation_status,
                 scholarship_status=status,
                 scholarship_message=calculation.replace(f"Year {year_index} - ", ""),
                 courses=course_records,
@@ -178,26 +197,45 @@ def build_academic_snapshot(
                 year=year,
                 weighted_average=weighted_average,
                 amount=amount,
+                calculation_status=calculation_status,
                 status=status,
             )
         )
 
-    latest_year = scholarship_years[-1] if scholarship_years else None
+    latest_acquired = next(
+        (
+            year
+            for year in reversed(scholarship_years)
+            if year.calculation_status == "calculated"
+            and year.amount is not None
+            and year.amount > 0
+        ),
+        None,
+    )
     snapshot_source = "demo" if source == "demo" else "live"
     return AcademicSnapshot(
         source=snapshot_source,
         student=StudentSummary(
             name=str(profile.get("name") or "Student"),
             student_id_masked=_mask_student_id(profile.get("student_id")),
+            faculty=str(profile.get("faculty") or "").strip() or None,
             majors=majors,
             minors=minors,
+            year_of_study=(
+                int(profile["year_of_study"])
+                if str(profile.get("year_of_study") or "").isdigit()
+                else None
+            ),
             cumulative_gpa=cumulative_gpa,
             total_credit_hours=total_credit_hours,
         ),
         academic_years=academic_years,
         scholarship_summary=ScholarshipSummary(
-            latest_academic_year=latest_year.year if latest_year else None,
-            latest_scholarship_amount=latest_year.amount if latest_year else 0,
+            latest_acquired_year=latest_acquired.year if latest_acquired else None,
+            latest_acquired_amount=latest_acquired.amount if latest_acquired else None,
+            latest_acquired_weighted_average=(
+                latest_acquired.weighted_average if latest_acquired else None
+            ),
             eligible_years=sum(year.status == "eligible" for year in scholarship_years),
             years=scholarship_years,
         ),
@@ -211,4 +249,3 @@ def build_academic_snapshot(
 def calculate_academic_summary(scraped_record: dict[str, Any]) -> AcademicSnapshot:
     """Compatibility-friendly name for callers that only need calculations."""
     return build_academic_snapshot(scraped_record)
-
