@@ -8,6 +8,45 @@ This project demonstrates browser automation, object-oriented Python design, aca
 
 ---
 
+## Academic Copilot web MVP (Phase 1–2)
+
+This branch also exposes the existing calculator as a local web product: **“Ask your academic record.”** The current checkpoint includes the secure connection screen, structured `AcademicSnapshot` API, dashboard, course-year accordions, and a sanitized demo record. The DeepSeek agent is intentionally not included yet; it begins only after dashboard approval.
+
+The browser scraper now returns profile and course data directly to Python. FastAPI passes that record into the existing `Student`, `Courses`, and `Mark` classes, converts their deterministic results into JSON, and serves a no-build HTML/CSS/JavaScript frontend.
+
+### Run the web app
+
+Create the virtual environment and install dependencies as described below, then run:
+
+```bash
+uvicorn backend.app:app --reload
+```
+
+Open [http://127.0.0.1:8000](http://127.0.0.1:8000). Choose **Explore the demo record** to inspect the dashboard without university credentials.
+
+The backend and frontend share one local server, so there is no separate frontend build command.
+
+### API endpoints
+
+- `POST /api/connect` — accepts a live UPEI connection request or `{ "demo": true }`, calculates a snapshot, and caches only that sanitized snapshot in memory
+- `GET /api/snapshot` — returns the current sanitized snapshot
+- `DELETE /api/snapshot` — clears the in-memory snapshot
+- `GET /api/health` — local health check
+
+### Credential flow
+
+For the web path, the password arrives in a masked `SecretStr` request field and is passed directly to the selected Python scraper. It is not placed in subprocess arguments, written to either legacy output file, logged, returned to the browser, stored in the snapshot, or sent to an AI provider. Run this local endpoint behind HTTPS before exposing it beyond localhost.
+
+The historical extractor scripts still support their command-line entry points and can generate the local text reports for CLI compatibility. Those generated files are ignored and are not application fixtures.
+
+### Verify
+
+```bash
+python -B -m unittest discover -v
+```
+
+---
+
 ## What the project does
 
 - Logs into the UPEI student portal through Selenium-driven browser automation
@@ -61,10 +100,15 @@ From a technical perspective, the project is useful because it combines:
 
 ```text
 Scholarship_calculator/
+├── backend/                    # FastAPI, AcademicSnapshot models, service layer
+├── frontend/                   # No-build dashboard (HTML/CSS/JavaScript)
+├── demo_data/                  # Sanitized fake academic record
+├── tests/                      # Deterministic service tests
 ├── Main.py                     # CLI controller and main program flow
 ├── Student.py                  # Student object and summary representation
 ├── Courses.py                  # Course management and scholarship calculation
 ├── Mark.py                     # Grade translation: percent, GPA, and letter grade
+├── scraper_utils.py            # Shared in-memory scraper transformations
 ├── grades_extractor_chrome.py  # Chrome-based portal automation
 ├── grades_extractor_safari.py  # Safari-based portal automation
 ├── requirements.txt            # Python dependencies

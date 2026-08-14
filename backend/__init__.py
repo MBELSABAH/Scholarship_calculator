@@ -1,0 +1,1 @@
+"""Academic Copilot backend package."""

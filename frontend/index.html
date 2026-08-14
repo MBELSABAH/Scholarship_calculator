@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="theme-color" content="#f4f6f3" />
+    <title>Academic Copilot</title>
+    <link rel="stylesheet" href="/styles.css" />
+  </head>
+  <body>
+    <div class="ambient ambient-one"></div>
+    <div class="ambient ambient-two"></div>
+
+    <main>
+      <section id="login-view" class="login-shell" aria-labelledby="login-title">
+        <div class="login-story">
+          <a class="brand brand-large" href="#" aria-label="Academic Copilot home">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32" role="img"><path d="M8 7.5h12a4 4 0 0 1 4 4v13H12a4 4 0 0 1-4-4v-13Z"/><path d="M8 7.5H6a3 3 0 0 0-3 3V22h5M13 12h6M13 16h7"/></svg>
+            </span>
+            <span>Academic Copilot</span>
+          </a>
+          <div class="story-copy">
+            <span class="eyebrow">Your degree, decoded</span>
+            <h1 id="login-title">Your university record, <em>explained.</em></h1>
+            <p>See the GPA, credits, courses, and scholarship decisions already inside your student portal—organized in one calm view.</p>
+          </div>
+          <div class="trust-row">
+            <span class="trust-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><path d="M12 3 5 6v5c0 4.6 2.9 8.7 7 10 4.1-1.3 7-5.4 7-10V6l-7-3Z"/><path d="m9.5 12 1.7 1.7 3.7-4"/></svg>
+            </span>
+            <span><strong>Private by design.</strong> Your credentials are used only for this retrieval.</span>
+          </div>
+        </div>
+
+        <div class="login-card-wrap">
+          <div id="login-card" class="login-card">
+            <div class="card-heading">
+              <span class="step-label">Secure connection</span>
+              <h2>Connect your UPEI account</h2>
+              <p>Use the same details you use for the student portal.</p>
+            </div>
+
+            <form id="connect-form" novalidate>
+              <label for="username">UPEI username</label>
+              <div class="field-wrap">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>
+                <input id="username" name="username" type="text" autocomplete="username" placeholder="your.name" required />
+              </div>
+
+              <div class="label-row">
+                <label for="password">Password</label>
+                <span>Server-side retrieval only</span>
+              </div>
+              <div class="field-wrap">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><rect x="5" y="10" width="14" height="10" rx="2"/><path d="M8 10V7a4 4 0 0 1 8 0v3"/></svg>
+                <input id="password" name="password" type="password" autocomplete="current-password" placeholder="Enter your password" required />
+              </div>
+
+              <label for="browser">Browser used for retrieval</label>
+              <div class="field-wrap select-wrap">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3.5 9h17M9 20.5 14 9M9 3.5 7 9"/></svg>
+                <select id="browser" name="browser">
+                  <option value="chrome">Google Chrome</option>
+                  <option value="safari">Safari</option>
+                </select>
+              </div>
+
+              <p id="form-error" class="form-error" role="alert" aria-live="polite"></p>
+              <button class="primary-button" type="submit">
+                <span>Connect to UPEI</span>
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 12h14M14 7l5 5-5 5"/></svg>
+              </button>
+            </form>
+
+            <div class="or-divider"><span>or preview without signing in</span></div>
+            <button id="demo-button" class="demo-button" type="button">
+              <span class="demo-spark" aria-hidden="true">✦</span>
+              Explore the demo record
+            </button>
+
+            <p class="privacy-note">
+              <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3 5 6v5c0 4.6 2.9 8.7 7 10 4.1-1.3 7-5.4 7-10V6l-7-3Z"/></svg>
+              Credentials stay in memory for retrieval and are never saved or sent to AI.
+            </p>
+          </div>
+
+          <div id="loading-card" class="loading-card" hidden aria-live="polite">
+            <div class="loader-orbit"><span></span></div>
+            <span class="step-label">Retrieving your record</span>
+            <h2 id="loading-title">Connecting to UPEI…</h2>
+            <p>This usually takes less than a minute. Keep this window open.</p>
+            <ol class="progress-list">
+              <li data-step="0"><span class="status-dot"></span><span>Secure connection started</span></li>
+              <li data-step="1"><span class="status-dot"></span><span>Academic profile loaded</span></li>
+              <li data-step="2"><span class="status-dot"></span><span>Grade history loaded</span></li>
+              <li data-step="3"><span class="status-dot"></span><span>Scholarship calculations complete</span></li>
+            </ol>
+          </div>
+        </div>
+      </section>
+
+      <section id="dashboard-view" class="dashboard" hidden aria-labelledby="dashboard-title">
+        <header class="topbar">
+          <a class="brand" href="#" aria-label="Academic Copilot home">
+            <span class="brand-mark" aria-hidden="true">
+              <svg viewBox="0 0 32 32"><path d="M8 7.5h12a4 4 0 0 1 4 4v13H12a4 4 0 0 1-4-4v-13Z"/><path d="M8 7.5H6a3 3 0 0 0-3 3V22h5M13 12h6M13 16h7"/></svg>
+            </span>
+            <span>Academic Copilot</span>
+          </a>
+          <div class="topbar-actions">
+            <span id="source-badge" class="source-badge">Demo data</span>
+            <button id="disconnect-button" class="text-button" type="button">Disconnect</button>
+            <div id="avatar" class="avatar">MC</div>
+          </div>
+        </header>
+
+        <div class="dashboard-content">
+          <div class="welcome-row">
+            <div>
+              <span class="eyebrow">Academic overview</span>
+              <h1 id="dashboard-title">Good afternoon, <span id="first-name">Maya</span>.</h1>
+              <p>Here’s the story your academic record tells today.</p>
+            </div>
+            <div class="record-meta">
+              <span>Student record</span>
+              <strong id="masked-id">••••007</strong>
+            </div>
+          </div>
+
+          <div id="summary-grid" class="summary-grid"></div>
+
+          <div class="section-heading scholarship-heading">
+            <div>
+              <span class="eyebrow">Recognition</span>
+              <h2>Scholarship history</h2>
+            </div>
+            <div id="scholarship-total" class="eligibility-pill"></div>
+          </div>
+          <div id="scholarship-grid" class="scholarship-grid"></div>
+
+          <div class="section-heading courses-heading">
+            <div>
+              <span class="eyebrow">Full record</span>
+              <h2>Academic years &amp; courses</h2>
+            </div>
+            <span class="section-hint">Select a year to see every course</span>
+          </div>
+          <div id="academic-years" class="academic-years"></div>
+
+          <footer>
+            <span>Academic Copilot</span>
+            <p>Calculations are estimates based on your retrieved academic record.</p>
+          </footer>
+        </div>
+      </section>
+    </main>
+
+    <script src="/app.js" defer></script>
+  </body>
+</html>

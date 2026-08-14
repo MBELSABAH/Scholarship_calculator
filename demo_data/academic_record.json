@@ -1,0 +1,31 @@
+{
+  "student": {
+    "name": "Maya Chen",
+    "student_id": "0007007",
+    "portal_cumulative_gpa": 4.094,
+    "majors": ["Computer Science", "Mathematics"],
+    "minors": ["Business"]
+  },
+  "courses": [
+    {"academic_year": "2023-2024", "code": "CS-1910-01", "name": "Computer Science I", "grade": "78", "credits": 3},
+    {"academic_year": "2023-2024", "code": "MATH-1910-01", "name": "Single Variable Calculus I", "grade": "82", "credits": 3},
+    {"academic_year": "2023-2024", "code": "ENG-1010-01", "name": "Academic Writing", "grade": "80", "credits": 3},
+    {"academic_year": "2023-2024", "code": "STAT-1210-01", "name": "Introductory Statistics", "grade": "81", "credits": 3},
+    {"academic_year": "2023-2024", "code": "PHYS-1110-01", "name": "General Physics I", "grade": "83", "credits": 3},
+    {"academic_year": "2023-2024", "code": "BUS-1410-01", "name": "Marketing", "grade": "87", "credits": 3},
+
+    {"academic_year": "2024-2025", "code": "CS-1920-01", "name": "Computer Science II", "grade": "96", "credits": 3},
+    {"academic_year": "2024-2025", "code": "CS-2610-01", "name": "Data Structures", "grade": "94", "credits": 3},
+    {"academic_year": "2024-2025", "code": "MATH-1920-01", "name": "Single Variable Calculus II", "grade": "95", "credits": 3},
+    {"academic_year": "2024-2025", "code": "MATH-2420-01", "name": "Linear Algebra", "grade": "93", "credits": 3},
+    {"academic_year": "2024-2025", "code": "CS-2520-01", "name": "Programming Practices", "grade": "92", "credits": 3},
+    {"academic_year": "2024-2025", "code": "BUS-2120-01", "name": "Business Analytics", "grade": "96", "credits": 3},
+
+    {"academic_year": "2025-2026", "code": "CS-2820-01", "name": "Computer Architecture", "grade": "94", "credits": 3},
+    {"academic_year": "2025-2026", "code": "CS-2910-01", "name": "Theory of Computation", "grade": "93", "credits": 3},
+    {"academic_year": "2025-2026", "code": "CS-2920-01", "name": "Software Engineering", "grade": "92", "credits": 3},
+    {"academic_year": "2025-2026", "code": "MATH-3010-01", "name": "Numerical Analysis", "grade": "91", "credits": 3},
+    {"academic_year": "2025-2026", "code": "CS-3310-01", "name": "Database Systems", "grade": "94", "credits": 3},
+    {"academic_year": "2025-2026", "code": "CS-3410-01", "name": "Operating Systems", "grade": "93", "credits": 3}
+  ]
+}
