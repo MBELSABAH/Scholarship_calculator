@@ -101,6 +101,19 @@ class StudentBackgroundProfile(BaseModel):
     career_goals: str | None = None
     personal_story_notes: list[str] = Field(default_factory=list)
     other_awards: list[str] = Field(default_factory=list)
+    faculty_confirmations: list[str] = Field(default_factory=list)
+
+
+class ScholarshipCriterionStatus(BaseModel):
+    key: str
+    status: Literal["matched", "unknown", "conflict", "preference_not_met"]
+    required: bool = True
+    preference: bool = False
+    published_text: str
+    source_url: str | None = None
+    expected_answer_type: Literal["boolean", "text", "number", "derived"] = "derived"
+    question: str | None = None
+    user_field: str | None = None
 
 
 class ScholarshipMatch(BaseModel):
@@ -113,6 +126,7 @@ class ScholarshipMatch(BaseModel):
     known_matches: list[str] = Field(default_factory=list)
     missing_information: list[str] = Field(default_factory=list)
     known_conflicts: list[str] = Field(default_factory=list)
+    criteria: list[ScholarshipCriterionStatus] = Field(default_factory=list)
 
 
 class ApplicationField(BaseModel):

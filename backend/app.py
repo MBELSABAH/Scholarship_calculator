@@ -66,7 +66,7 @@ async def connect(request: ConnectRequest) -> AcademicSnapshot:
     if request.demo:
         snapshot = build_academic_snapshot(load_demo_record(), source="demo")
         snapshot_store.set(snapshot)
-        agent_service.conversations.clear()
+        agent_service.clear_student_context()
         SCHOLARSHIP_SESSION.clear_student_state()
         return snapshot
 
@@ -88,7 +88,7 @@ async def connect(request: ConnectRequest) -> AcademicSnapshot:
         password = ""
 
     snapshot_store.set(snapshot)
-    agent_service.conversations.clear()
+    agent_service.clear_student_context()
     SCHOLARSHIP_SESSION.clear_student_state()
     return snapshot
 
@@ -104,7 +104,7 @@ def get_snapshot() -> AcademicSnapshot:
 @app.delete("/api/snapshot", status_code=204)
 def clear_snapshot() -> None:
     snapshot_store.clear()
-    agent_service.conversations.clear()
+    agent_service.clear_student_context()
     SCHOLARSHIP_SESSION.clear_student_state()
 
 

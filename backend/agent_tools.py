@@ -209,6 +209,14 @@ TOOL_DEFINITIONS.extend(
         {
             "type": "function",
             "function": {
+                "name": "get_scholarship_missing_information",
+                "description": "Return the deterministic unresolved required criteria and preferences from the currently ranked scholarship matches.",
+                "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "save_student_background_answer",
                 "description": (
                     "Save one personal fact explicitly confirmed by the student. For a one-word reply such "
@@ -616,9 +624,10 @@ def rank_scholarship_matches(
     search = SCHOLARSHIP_SESSION.discovery.cached_search()
     if search is None:
         raise ToolExecutionError("Search official UPEI scholarships before ranking matches.")
-    matches = SCHOLARSHIP_SESSION.rank(search, snapshot)
+    matches, transitions = SCHOLARSHIP_SESSION.rank_with_transitions(search, snapshot)
     return {
         "matches": [_model_dump(match) for match in matches],
+        "transitions": transitions,
         "sources": [_model_dump(source) for source in search.sources],
         "source_mode": search.source_mode,
         "warning": search.warning,
@@ -655,6 +664,14 @@ def get_student_background(
     del snapshot
     _require_no_arguments(arguments or {})
     return SCHOLARSHIP_SESSION.get_background()
+
+
+def get_scholarship_missing_information(
+    snapshot: AcademicSnapshot, arguments: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    del snapshot
+    _require_no_arguments(arguments or {})
+    return {"matches": SCHOLARSHIP_SESSION.get_missing_information()}
 
 
 def save_student_background_answer(
@@ -793,6 +810,7 @@ TOOL_FUNCTIONS: dict[str, ToolFunction] = {
     "rank_scholarship_matches": rank_scholarship_matches,
     "inspect_scholarship": inspect_scholarship,
     "get_student_background": get_student_background,
+    "get_scholarship_missing_information": get_scholarship_missing_information,
     "save_student_background_answer": save_student_background_answer,
     "open_scholarship_application": open_scholarship_application,
     "inspect_application_form": inspect_application_form,

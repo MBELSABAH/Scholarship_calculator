@@ -280,6 +280,67 @@ class ScholarshipSessionTests(unittest.TestCase):
         self.assertEqual(match.match_level, "excellent")
         self.assertIn("Student confirmed that financial need applies.", match.known_matches)
 
+    def test_every_displayed_unknown_has_a_structured_criterion(self):
+        match = self.session.rank(self.search, self.snapshot)[0]
+
+        structured_unknowns = {
+            item.published_text
+            for item in match.criteria
+            if item.status in {"unknown", "preference_not_met"}
+        }
+        self.assertEqual(set(match.missing_information), structured_unknowns)
+        missing = self.session.get_missing_information()
+        self.assertEqual(missing[0]["scholarship_id"], match.scholarship_id)
+        self.assertTrue(missing[0]["unresolved_required"])
+
+    def test_smcs_and_faculty_of_science_normalize_without_question(self):
+        record = load_demo_record()
+        record["student"] = {**record["student"], "faculty": "SMCS"}
+        snapshot = build_academic_snapshot(record, source="demo")
+        awards = [
+            demo_scholarship(id="science", faculty=["Faculty of Science"], financial_need_required=None, personal_statement_required=False),
+            demo_scholarship(id="smcs", faculty=["School of Mathematical and Computational Sciences"], financial_need_required=None, personal_statement_required=False),
+        ]
+        ranked = self.session.rank(
+            ScholarshipSearchResult(scholarships=awards, source_mode="demo_fallback", sources=[]),
+            snapshot,
+        )
+
+        self.assertTrue(all(item.match_level == "excellent" for item in ranked))
+        self.assertFalse(any(item.key == "faculty_match" and item.status == "unknown" for match in ranked for item in match.criteria))
+
+    def test_confirmed_ambiguous_faculty_is_saved_and_reranked_with_transition(self):
+        award = demo_scholarship(
+            faculty=["Faculty of Arts"],
+            financial_need_required=None,
+            personal_statement_required=False,
+        )
+        session = ScholarshipSession(StubDiscovery(award))
+        search = ScholarshipSearchResult(scholarships=[award], source_mode="demo_fallback", sources=[])
+        before = session.rank(search, self.snapshot)[0]
+        pending = session.next_profile_question()
+
+        self.assertEqual(before.match_level, "potential")
+        self.assertEqual(pending["criterion_key"], "faculty_match")
+        resolved = session.resolve_pending_question("Yes", self.snapshot)
+
+        self.assertIn(award.id, session.get_background()["faculty_confirmations"])
+        self.assertEqual(resolved["matches"][0]["match_level"], "excellent")
+        self.assertEqual(
+            resolved["transitions"],
+            [{"scholarship_id": award.id, "previous_level": "potential", "new_level": "excellent"}],
+        )
+        self.assertIn("Excellent Match", resolved["message"])
+
+    def test_question_cap_never_claims_unknown_criteria_are_complete(self):
+        match = self.session.rank(self.search, self.snapshot)[0]
+        self.session.discovery_questions_asked = self.session.discovery_question_limit
+
+        self.assertIsNone(self.session.next_profile_question())
+        message = self.session._interview_status_message([match], [])
+        self.assertIn("eligibility details remain", message)
+        self.assertNotIn("fully", message.casefold())
+
     def test_gender_pending_question_keeps_official_context_and_resolves_male_answer(self):
         scholarship = demo_scholarship(
             financial_need_required=None,

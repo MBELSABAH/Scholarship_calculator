@@ -59,7 +59,7 @@ class AcademicAgentServiceTests(unittest.IsolatedAsyncioTestCase):
         )
         service = AgentService(client)
 
-        result = await service.chat("How many credits have I completed?", self.snapshot)
+        result = await service.chat("Summarize my connected profile in one sentence.", self.snapshot)
 
         self.assertEqual(result.tools_used, ["get_student_summary"])
         second_request = client.calls[1]["messages"]
@@ -113,31 +113,90 @@ class AcademicAgentServiceTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(client.calls, [])
 
-    async def test_conversation_history_is_reused_for_follow_up(self):
-        client = FakeModelClient(
-            [
-                model_response(content="Your lowest grade was 78%."),
-                model_response(content="In 2025-2026, your lowest grade was 91%."),
-            ]
-        )
+    async def test_course_list_and_pronoun_follow_up_are_deterministic(self):
+        client = FakeModelClient([])
         service = AgentService(client)
-        first = await service.chat("What was my lowest grade?", self.snapshot)
+        first = await service.chat("What are my three lowest grades?", self.snapshot)
 
-        await service.chat(
-            "What about in 2025-2026?",
+        follow_up = await service.chat(
+            "What years did I take those?",
             self.snapshot,
             conversation_id=first.conversation_id,
         )
 
-        follow_up_messages = client.calls[1]["messages"]
+        self.assertIn("CS-1910-01 — 78% — 2023-2024", first.message)
+        self.assertIn("CS-1910-01 — 2023-2024", follow_up.message)
+        self.assertEqual(client.calls, [])
+
+    async def test_common_academic_facts_bypass_model(self):
+        client = FakeModelClient([])
+        service = AgentService(client)
+
+        gpa = await service.chat("What is my GPA?", self.snapshot)
+        subjects = await service.chat("Which subject do I score highest in?", self.snapshot)
+
+        self.assertEqual(gpa.message, "Your cumulative GPA is 4.094.")
+        self.assertIn("CS —", subjects.message)
+        self.assertEqual(client.calls, [])
+
+    async def test_unverified_model_course_never_reaches_user(self):
+        client = FakeModelClient([model_response(content="ANTH-1010 was 84%.")])
+        service = AgentService(client)
+
+        result = await service.chat("Give me one short academic observation.", self.snapshot)
+
+        self.assertNotIn("ANTH-1010", result.message)
         self.assertEqual(
-            [(item["role"], item["content"]) for item in follow_up_messages[-3:]],
-            [
-                ("user", "What was my lowest grade?"),
-                ("assistant", "Your lowest grade was 78%."),
-                ("user", "What about in 2025-2026?"),
-            ],
+            result.message,
+            "I can't verify that course or grade in your connected academic record.",
         )
+
+    async def test_model_cannot_attach_wrong_grade_to_real_course(self):
+        client = FakeModelClient(
+            [model_response(content="CS-1910-01 was 84%.")]
+        )
+        service = AgentService(client)
+
+        result = await service.chat("Give me one short academic observation.", self.snapshot)
+
+        self.assertEqual(
+            result.message,
+            "I can't verify that course or grade in your connected academic record.",
+        )
+
+    async def test_scholarship_model_cannot_claim_unverified_rating_update(self):
+        client = FakeModelClient(
+            [model_response(content="Both potential matches are now Excellent Match.")]
+        )
+        service = AgentService(client)
+
+        result = await service.chat(
+            "Tell me what changed.", self.snapshot, mode="scholarship"
+        )
+
+        self.assertIn("no verified backend rating transition", result.message)
+        self.assertNotIn("now Excellent", result.message)
+
+    async def test_prior_assistant_hallucination_is_not_authority(self):
+        client = FakeModelClient([])
+        service = AgentService(client)
+        conversation_id, _ = service.conversations.open(
+            mode="academic", snapshot_id=self.snapshot.snapshot_id
+        )
+        service.conversations.append_turn(
+            conversation_id, "Invent a course", "ANTH-1010 was 84%."
+        )
+
+        result = await service.chat(
+            "What grade did I get in ANTH-1010?",
+            self.snapshot,
+            conversation_id=conversation_id,
+        )
+
+        self.assertEqual(
+            result.message, "I can't verify that course in your connected academic record."
+        )
+        self.assertEqual(client.calls, [])
 
     def test_contextual_suggestions_change_with_tool_and_question(self):
         scholarship = contextual_suggestions(
