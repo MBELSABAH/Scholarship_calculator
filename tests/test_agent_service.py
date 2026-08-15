@@ -137,7 +137,7 @@ class AcademicAgentServiceTests(unittest.IsolatedAsyncioTestCase):
         subjects = await service.chat("Which subject do I score highest in?", self.snapshot)
 
         self.assertEqual(gpa.message, "Your cumulative GPA is 4.094.")
-        self.assertIn("CS —", subjects.message)
+        self.assertIn("Your strongest subject is CS", subjects.message)
         self.assertEqual(client.calls, [])
 
     async def test_extreme_synonyms_and_remaining_credits_route_deterministically(self):
@@ -162,6 +162,38 @@ class AcademicAgentServiceTests(unittest.IsolatedAsyncioTestCase):
             remaining.message,
             "You have 18 credits remaining to reach 120 credits. You've completed 102.",
         )
+
+    async def test_subject_and_course_intents_use_distinct_deterministic_routes(self):
+        record = load_demo_record()
+        record["courses"] = [
+            *record["courses"],
+            {"academic_year": "2025-2026", "code": "MCS-1000-01", "name": "MCS I", "grade": "99", "credits": 3},
+            {"academic_year": "2025-2026", "code": "MCS-2000-01", "name": "MCS II", "grade": "98", "credits": 3},
+        ]
+        snapshot = build_academic_snapshot(record, source="demo")
+        service = AgentService(FakeModelClient([]))
+
+        top_courses = await service.chat("What are my highest grades? give me the top 3", snapshot)
+        best_subject = await service.chat("out of all subjects that i took which specific course subject am i the best at?", snapshot)
+        selected_subjects = await service.chat("which course like cs, math, or mcs am i the best at?", snapshot)
+        best_course = await service.chat("what is my best course?", snapshot)
+        best_subject_short = await service.chat("what is my best subject?", snapshot)
+        ranked_subjects = await service.chat("rank my subjects from strongest to weakest", snapshot)
+        compare_subjects = await service.chat("am i better at CS or MATH?", snapshot)
+
+        self.assertEqual(top_courses.tools_used, ["get_course_extremes"])
+        self.assertEqual(len(top_courses.message.splitlines()), 3)
+        for result in (best_subject, selected_subjects, best_subject_short, ranked_subjects, compare_subjects):
+            self.assertEqual(result.tools_used, ["get_subject_performance"])
+        self.assertIn("MCS", best_subject.message)
+        self.assertIn("MCS", selected_subjects.message)
+        self.assertNotIn("CS-", best_subject.message)
+        self.assertNotIn("MATH-", selected_subjects.message)
+        self.assertIn("Your strongest subject is MCS", best_subject_short.message)
+        self.assertGreaterEqual(len(ranked_subjects.message.splitlines()), 3)
+        self.assertNotIn("MCS", compare_subjects.message)
+        self.assertEqual(best_course.tools_used, ["get_course_extremes"])
+        self.assertEqual(len(best_course.message.splitlines()), 1)
 
     async def test_current_course_answer_and_explicit_attempt_history_are_distinct(self):
         record = load_demo_record()

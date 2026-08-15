@@ -666,6 +666,68 @@ class AgentService:
         year_match = re.search(r"\b(20\d{2}-20\d{2})\b", question)
         course_code_match = re.search(r"\b([A-Za-z]{2,8}[- ]\d{3,4}(?:-\d{1,3})?)\b", question)
 
+        available_subjects = {
+            course.base_code.split("-")[0].upper()
+            for year in snapshot.academic_years
+            for course in year.courses
+        }
+        mentioned_subjects = [
+            subject
+            for subject in sorted(available_subjects, key=len, reverse=True)
+            if re.search(rf"\b{re.escape(subject)}\b", question, re.I)
+        ]
+        subject_signal = bool(
+            re.search(
+                r"\b(?:subjects?|course subjects?|departments?|disciplines?|fields?|course prefixes?|prefix(?:es)?|areas?)\b",
+                lowered,
+            )
+        )
+        comparison_signal = bool(
+            re.search(
+                r"\b(?:best|highest|strongest|better|worse|lowest|weakest|average|perform|score|rank)\b",
+                lowered,
+            )
+        )
+        subject_intent = (
+            not course_code_match
+            and comparison_signal
+            and (subject_signal or len(set(mentioned_subjects)) >= 2)
+        )
+
+        if subject_intent:
+            result = execute_tool("get_subject_performance", {}, snapshot)
+            ranked_subjects = result["subjects"]
+            requested_subjects = set(mentioned_subjects)
+            subjects = [
+                item
+                for item in ranked_subjects
+                if not requested_subjects or item["subject"].upper() in requested_subjects
+            ]
+            if not subjects:
+                return "No graded subject results are available for those prefixes in your connected record.", ["get_subject_performance"], []
+
+            is_rank_request = bool(
+                re.search(
+                    r"\b(?:rank|list|show)\b.*\b(?:all\s+)?(?:my\s+)?subjects?\b",
+                    lowered,
+                )
+            )
+            if is_rank_request:
+                answer = "\n".join(
+                    f"{item['subject']} — {item['average_grade']:.2f}% average across {item['course_count']} completed course{'s' if item['course_count'] != 1 else ''}"
+                    for item in subjects
+                )
+            else:
+                strongest = subjects[0]
+                count_text = f"{strongest['course_count']} completed course{'s' if strongest['course_count'] != 1 else ''}"
+                if len(requested_subjects) >= 2:
+                    answer = f"{strongest['subject']} is your strongest of those subjects, averaging {strongest['average_grade']:.2f}% across {count_text}."
+                else:
+                    answer = f"Your strongest subject is {strongest['subject']} — {strongest['average_grade']:.2f}% average across {count_text}."
+            # Subject results are category facts, not an individual-course list.
+            self._last_academic_courses.pop((conversation_id, snapshot.snapshot_id), None)
+            return answer, ["get_subject_performance"], ["What are my highest grades?", "What is my GPA?"]
+
         extreme_direction = None
         if re.search(r"\b(?:lowest|worst|weakest|bottom)\b", lowered) and re.search(
             r"\b(?:course|grade|mark|result)s?\b", lowered
@@ -674,7 +736,13 @@ class AgentService:
         elif re.search(r"\b(?:highest|best|strongest|top)\b", lowered) and re.search(r"\b(?:course|grade|mark|result)s?\b", lowered):
             extreme_direction = "highest"
         if extreme_direction:
-            count = self._requested_count(lowered, default=5)
+            singular_extreme = bool(
+                re.search(
+                    r"\b(?:what|which)\s+(?:is|was)\s+my\s+(?:best|highest|worst|lowest)\s+course\b",
+                    lowered,
+                )
+            )
+            count = self._requested_count(lowered, default=1 if singular_extreme else 5)
             result = execute_tool(
                 "get_course_extremes",
                 {"count": 20 if year_match else count, "direction": extreme_direction},
@@ -694,19 +762,7 @@ class AgentService:
             )
             return answer, ["get_course_extremes"], ["What years did I take those?", "Compare my subjects"]
 
-        available_subjects = {
-            course.base_code.split("-")[0]
-            for year in snapshot.academic_years
-            for course in year.courses
-        }
-        requested_subject = next(
-            (
-                subject
-                for subject in sorted(available_subjects)
-                if re.search(rf"\b{re.escape(subject)}\b", question, re.I)
-            ),
-            None,
-        )
+        requested_subject = next(iter(mentioned_subjects), None)
         if (
             re.search(r"\bsubject(?:s| performance)?\b|\bdepartment(?:s)?\b", lowered)
             or requested_subject
