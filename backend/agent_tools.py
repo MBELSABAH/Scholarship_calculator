@@ -291,6 +291,19 @@ TOOL_DEFINITIONS.extend(
         {
             "type": "function",
             "function": {
+                "name": "prepare_application_email",
+                "description": "Prepare a reviewable scholarship application email draft. Never send email; use only official recipient, deadline, and document metadata from the application state.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {"application_id": {"type": "string"}},
+                    "required": ["application_id"],
+                    "additionalProperties": False,
+                },
+            },
+        },
+        {
+            "type": "function",
+            "function": {
                 "name": "submit_application",
                 "description": (
                     "Check submission state. This cannot authorize submission; the student must first use the "
@@ -690,6 +703,16 @@ def prepare_application_preview(
     return _model_dump(SCHOLARSHIP_SESSION.prepare_preview(arguments["application_id"]))
 
 
+def prepare_application_email(
+    snapshot: AcademicSnapshot, arguments: dict[str, Any] | None = None
+) -> dict[str, Any]:
+    del snapshot
+    arguments = arguments or {}
+    if set(arguments) != {"application_id"} or not isinstance(arguments.get("application_id"), str):
+        raise ToolExecutionError("prepare_application_email requires application_id.")
+    return _model_dump(SCHOLARSHIP_SESSION.prepare_application_email(arguments["application_id"]))
+
+
 def submit_application(
     snapshot: AcademicSnapshot, arguments: dict[str, Any] | None = None
 ) -> dict[str, Any]:
@@ -718,6 +741,7 @@ TOOL_FUNCTIONS: dict[str, ToolFunction] = {
     "save_application_answer": save_application_answer,
     "draft_personal_statement": draft_personal_statement,
     "prepare_application_preview": prepare_application_preview,
+    "prepare_application_email": prepare_application_email,
     "submit_application": submit_application,
 }
 

@@ -12,7 +12,10 @@ from backend.scholarship_service import (
     SafeUPEIWebClient,
     ScholarshipDiscoveryService,
     ScholarshipResearchError,
+    parse_deadline_text,
+    resolve_deadlines,
 )
+from datetime import date
 
 
 class FakeWebClient:
@@ -202,6 +205,58 @@ class ScholarshipDiscoveryTests(unittest.TestCase):
             ["Current 3rd Year", "Current 4th Year"],
         )
 
+    def test_deadline_parser_handles_recurring_multiple_formats(self):
+        parsed = parse_deadline_text(
+            "Oct-01 & Feb-01 each year",
+            source="individual_award_page",
+            source_url="https://www.upei.ca/award",
+        )
+        self.assertEqual([(item.month, item.day) for item in parsed], [(10, 1), (2, 1)])
+        resolved = resolve_deadlines(
+            [("Oct-01 & Feb-01 each year", "upei_directory", "https://www.upei.ca/award", "high")],
+            today=date(2026, 8, 15),
+        )
+        self.assertIsNone(resolved["deadline"])
+        self.assertEqual(resolved["deadline_display"], "October 1")
+        self.assertEqual(resolved["next_deadline"], "2026-10-01")
+        self.assertEqual(len(resolved["deadlines"]), 2)
+
+    def test_unknown_deadline_is_not_claimed_as_no_deadline(self):
+        resolved = resolve_deadlines([])
+        self.assertIsNone(resolved["deadline"])
+        self.assertEqual(resolved["deadline_display"], "Not found")
+        self.assertEqual(resolved["deadline_precision"], "unknown")
+
+    def test_cycle_month_and_status_are_kept_separate(self):
+        record = ScholarshipDiscoveryService._record_from_fields(
+            {
+                "id": "cycle-award",
+                "name": "Cycle award",
+                "description": "Applications are closed until the beginning of Fall semester.",
+                "cycle_deadline": "October",
+                "_cycle_source": "fall_award_cycle_group",
+                "cycle_status": "closed until Fall",
+                "source_title": "UPEI cycle",
+            },
+            "https://www.upei.ca/scholarships-and-awards/display?awardid=cycle-award",
+        )
+        self.assertEqual(record.deadline_precision, "month")
+        self.assertEqual(record.deadline_display, "October")
+        self.assertEqual(record.application_status, "closed")
+
+    def test_specific_deadline_has_high_confidence_and_wins_directory(self):
+        resolved = resolve_deadlines(
+            [
+                ("October 1", "upei_directory", "https://www.upei.ca/directory", "high"),
+                ("September 30, 2026", "application_form", "https://www.upei.ca/form", "high"),
+            ],
+            today=date(2026, 8, 15),
+        )
+        self.assertEqual(resolved["deadline"], "2026-09-30")
+        self.assertEqual(resolved["deadline_source"], "application_form")
+        self.assertTrue(resolved["deadline_conflict"])
+        self.assertEqual(resolved["other_deadlines"][0].value, "October 1")
+
 
 class ScholarshipSessionTests(unittest.TestCase):
     def setUp(self):
@@ -373,6 +428,28 @@ class ScholarshipSessionTests(unittest.TestCase):
         self.assertEqual(state.inspection_status, "unavailable")
         self.assertEqual(state.fields, [])
         self.assertFalse(session.prepare_preview(state.application_id).ready)
+
+    def test_email_application_draft_is_reviewable_and_not_sent(self):
+        scholarship = demo_scholarship(
+            id="email-award",
+            financial_need_required=None,
+            personal_statement_required=False,
+            submission_method="email",
+            submission_email="scholarships@upei.ca",
+            required_documents=["Official transcript", "Reference letter"],
+        )
+        session = ScholarshipSession(StubDiscovery(scholarship))
+
+        state = session.open_application(scholarship.id, self.snapshot)
+        draft = session.prepare_application_email(state.application_id)
+
+        self.assertEqual(state.next_action, "guided_application")
+        self.assertTrue(draft.ready)
+        self.assertEqual(draft.to, "scholarships@upei.ca")
+        self.assertIn("Application", draft.subject)
+        self.assertIn("Official transcript", draft.attachments_required)
+        self.assertTrue(draft.mailto_url.startswith("mailto:scholarships@upei.ca?"))
+        self.assertIn("%E2%80%94", draft.mailto_url)
 
     def test_canonical_apply_route_is_available(self):
         from backend.app import app

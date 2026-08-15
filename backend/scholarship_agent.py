@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import re
 from threading import Lock
+from urllib.parse import urlencode
 from typing import Any
 from uuid import uuid4
 
@@ -11,6 +12,7 @@ from backend.models import AcademicSnapshot
 from backend.scholarship_models import (
     ApplicationField,
     ApplicationPreview,
+    ApplicationEmailDraft,
     DraftAnswer,
     ScholarshipApplicationState,
     ScholarshipMatch,
@@ -449,7 +451,11 @@ class ScholarshipSession:
             (field for field in fields if field.required and field.known_answer in (None, "")),
             None,
         )
-        if fields and inspection_status in {"official_form", "criteria_based_preview"}:
+        if scholarship.submission_method == "email":
+            next_action = "guided_application"
+            destination_url = None
+            status_message = "Your email application workspace is ready. Review the draft before opening your mail client."
+        elif fields and inspection_status in {"official_form", "criteria_based_preview"}:
             next_action = "guided_application"
             destination_url = None
             status_message = "Application started. Review the known fields and complete one missing detail at a time."
@@ -470,6 +476,11 @@ class ScholarshipSession:
             scholarship_id=scholarship.id,
             scholarship_name=scholarship.name,
             application_url=scholarship.application_url,
+            submission_method=scholarship.submission_method,
+            submission_email=scholarship.submission_email,
+            required_documents=scholarship.required_documents,
+            deadline_display=scholarship.next_deadline_display or scholarship.deadline_display or "Not found",
+            application_status=scholarship.application_status,
             inspection_status=inspection_status,
             next_action=next_action,
             destination_url=destination_url,
@@ -636,6 +647,43 @@ class ScholarshipSession:
             missing_required_fields=missing,
             warnings=warnings,
             answers=[{"field_id": field.field_id, "label": field.label, "answer": field.known_answer} for field in state.fields if field.known_answer not in (None, "")],
+        )
+
+    def prepare_application_email(self, application_id: str) -> ApplicationEmailDraft:
+        state = self.get_application(application_id)
+        preview = self.prepare_preview(application_id)
+        missing = list(preview.missing_required_fields)
+        if not state.submission_email:
+            missing.append("Official submission email was not found.")
+        ready = preview.ready and state.submission_method == "email" and bool(state.submission_email)
+        attachments = list(state.required_documents)
+        attachments.extend(
+            field.label
+            for field in state.fields
+            if field.required and field.type == "file" and field.label not in attachments
+        )
+        full_name = str(state.known_fields.get("name") or "Student")
+        subject = f"Application — {state.scholarship_name} — {full_name}"
+        body = (
+            "Hello,\n\n"
+            f"Please find attached my application for the {state.scholarship_name}.\n\n"
+            "I have included the required application materials for consideration.\n\n"
+            "Thank you for your time.\n\n"
+            f"Kind regards,\n{full_name}"
+        )
+        params = urlencode({"subject": subject, "body": body})
+        mailto_url = f"mailto:{state.submission_email}?{params}" if state.submission_email else None
+        return ApplicationEmailDraft(
+            application_id=application_id,
+            to=state.submission_email,
+            subject=subject,
+            body=body,
+            attachments_required=attachments,
+            scholarship_name=state.scholarship_name,
+            deadline=state.deadline_display,
+            ready=ready,
+            missing_fields=missing,
+            mailto_url=mailto_url,
         )
 
     def approve_and_submit(self, application_id: str, explicit_action: str) -> ScholarshipApplicationState:

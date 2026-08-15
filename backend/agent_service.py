@@ -47,6 +47,8 @@ For essays, first gather the student's real experience, then draft only from tho
 Never treat a draft as approved and never submit an application without the explicit Approve & Submit UI action.
 For “latest scholarship,” use only latest_acquired_year and latest_acquired_amount; do not conflate them with current-year eligibility.
 If current_application_id is present in UI context, continue that application with inspect_application_form; do not open a duplicate application.
+When answering deadline questions, use the structured deadline fields from the scholarship tool result. Say “Deadline not found” or direct the student to the official page when precision is unknown; never infer “no deadline.” If sources conflict, state the preferred specific/application deadline and briefly preserve the other source.
+After prepare_application_preview, use prepare_application_email when the application's submission_method is email. Present the draft for review; never send it.
 When the user asks for help applying and current_application_id is absent, call open_scholarship_application before asking any application question; inspecting a scholarship alone is not enough.
 When the user says “Use this answer” for an existing draft, inspect the current application and call save_application_answer with the exact draft_text and user_approved=true. Do not draft again.
 Do not claim an official university determination.
@@ -235,6 +237,8 @@ def contextual_suggestions(question: str, tools_used: list[str]) -> list[str]:
     lowered = question.casefold()
     tools = set(tools_used)
 
+    if "prepare_application_email" in tools:
+        return ["Preview email", "What attachments are needed?"]
     if "prepare_application_preview" in tools:
         return ["Review application", "What is still missing?"]
     if "draft_personal_statement" in tools:
@@ -533,6 +537,7 @@ class AgentService:
             "save_application_answer",
             "draft_personal_statement",
             "prepare_application_preview",
+            "prepare_application_email",
             "submit_application",
         }:
             updates.append("refresh_application")

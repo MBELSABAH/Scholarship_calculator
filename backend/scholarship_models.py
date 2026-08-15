@@ -13,11 +13,42 @@ class ScholarshipSource(BaseModel):
     retrieved_at: str | None = None
 
 
+class DeadlineOccurrence(BaseModel):
+    month: int | None = None
+    day: int | None = None
+    year: int | None = None
+    display: str
+    precision: Literal["exact", "month_day", "month", "unknown"]
+    source: str | None = None
+    source_url: str | None = None
+    confidence: Literal["high", "medium", "unknown"] = "unknown"
+    recurring: bool = False
+
+
+class DeadlineConflict(BaseModel):
+    value: str
+    source: str
+    source_url: str | None = None
+
+
 class ScholarshipRecord(BaseModel):
     id: str
     name: str
     amount: float | None = None
     deadline: str | None = None
+    deadline_display: str | None = None
+    deadline_precision: Literal["exact", "month_day", "month", "unknown"] = "unknown"
+    deadline_month: int | None = None
+    deadline_day: int | None = None
+    deadline_source: str | None = None
+    deadline_source_url: str | None = None
+    deadline_confidence: Literal["high", "medium", "unknown"] = "unknown"
+    deadlines: list[DeadlineOccurrence] = Field(default_factory=list)
+    next_deadline: str | None = None
+    next_deadline_display: str | None = None
+    deadline_conflict: bool = False
+    other_deadlines: list[DeadlineConflict] = Field(default_factory=list)
+    application_status: Literal["open", "closed", "upcoming", "unknown"] = "unknown"
     description: str
     faculty: list[str] = Field(default_factory=list)
     major: list[str] = Field(default_factory=list)
@@ -30,6 +61,9 @@ class ScholarshipRecord(BaseModel):
     reference_required: bool | None = None
     application_required: bool | None = None
     application_url: str | None = None
+    submission_method: Literal["portal", "email", "external_form", "unknown"] = "unknown"
+    submission_email: str | None = None
+    required_documents: list[str] = Field(default_factory=list)
     source_url: str
     source_title: str
     detail_status: Literal["extracted", "source_only"] = "extracted"
@@ -105,6 +139,11 @@ class ScholarshipApplicationState(BaseModel):
     scholarship_id: str
     scholarship_name: str
     application_url: str | None = None
+    submission_method: Literal["portal", "email", "external_form", "unknown"] = "unknown"
+    submission_email: str | None = None
+    required_documents: list[str] = Field(default_factory=list)
+    deadline_display: str = "Not found"
+    application_status: Literal["open", "closed", "upcoming", "unknown"] = "unknown"
     inspection_status: Literal["official_form", "criteria_based_preview", "unavailable"]
     next_action: Literal[
         "guided_application",
@@ -136,3 +175,16 @@ class ApplicationPreview(BaseModel):
     missing_required_fields: list[str]
     warnings: list[str]
     answers: list[dict[str, Any]]
+
+
+class ApplicationEmailDraft(BaseModel):
+    application_id: str
+    to: str | None
+    subject: str
+    body: str
+    attachments_required: list[str] = Field(default_factory=list)
+    scholarship_name: str
+    deadline: str
+    ready: bool
+    missing_fields: list[str] = Field(default_factory=list)
+    mailto_url: str | None = None

@@ -1784,6 +1784,63 @@ a.link-action {
   text-transform: uppercase;
 }
 
+.email-preview {
+  margin-top: 18px;
+  padding: 18px;
+  display: grid;
+  gap: 8px;
+  border: 1px solid #cbdad1;
+  border-radius: 12px;
+  background: #fff;
+}
+
+.email-preview label {
+  color: #71817a;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.email-preview input,
+.email-preview textarea {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 10px 11px;
+  border: 1px solid #cfddd4;
+  border-radius: 8px;
+  color: var(--ink);
+  background: #fbfdfb;
+  font: inherit;
+  font-size: 13px;
+}
+
+.email-preview textarea {
+  resize: vertical;
+  line-height: 1.5;
+}
+
+.email-attachments {
+  margin: 8px 0;
+  padding: 11px;
+  border-radius: 8px;
+  color: #5e7067;
+  background: #f0f6f2;
+  font-size: 12px;
+}
+
+.email-attachments ul {
+  margin: 6px 0 0 17px;
+  padding: 0;
+}
+
+.email-attachments p,
+.email-warning {
+  margin: 6px 0 0;
+  color: #8a6020;
+  font-size: 12px;
+}
+
 .detail-heading {
   align-items: flex-start;
 }

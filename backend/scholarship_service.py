@@ -4,7 +4,7 @@ from __future__ import annotations
 
 import json
 import re
-from datetime import UTC, datetime
+from datetime import UTC, date, datetime
 from pathlib import Path
 from threading import Lock
 from typing import Any
@@ -17,6 +17,8 @@ from backend.scholarship_models import (
     ScholarshipRecord,
     ScholarshipSearchResult,
     ScholarshipSource,
+    DeadlineConflict,
+    DeadlineOccurrence,
 )
 
 
@@ -32,6 +34,24 @@ ALLOWED_SCHOLARSHIP_HOSTS = {
 }
 MAX_RESPONSE_BYTES = 2_000_000
 MAX_RESULTS = 8
+
+MONTHS = {
+    name.casefold(): index
+    for index, name in enumerate(
+        ("January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"),
+        start=1,
+    )
+}
+MONTHS.update({key[:3]: value for key, value in list(MONTHS.items())})
+DEADLINE_PRIORITY = {
+    "individual_award_page": 1,
+    "application_page": 2,
+    "application_form": 2,
+    "upei_directory": 3,
+    "award_cycle_page": 4,
+    "fall_award_cycle_group": 5,
+    "winter_award_cycle_group": 5,
+}
 
 
 class ScholarshipResearchError(RuntimeError):
@@ -53,6 +73,155 @@ def _money(value: str | None) -> float | None:
 
 def _award_id(url: str) -> str:
     return (parse_qs(urlparse(url).query).get("awardid") or [""])[0]
+
+
+def _month_number(value: str) -> int | None:
+    return MONTHS.get(value.strip().casefold()) or MONTHS.get(value.strip().casefold()[:3])
+
+
+def parse_deadline_text(
+    text: str | None,
+    *,
+    source: str,
+    source_url: str | None,
+    confidence: str = "high",
+) -> list[DeadlineOccurrence]:
+    """Parse explicit UPEI deadline wording without inventing a day."""
+    raw = _clean_text(text)
+    if not raw:
+        return []
+    found: list[DeadlineOccurrence] = []
+    month_pattern = r"January|February|March|April|May|June|July|August|September|October|November|December|Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Sept|Oct|Nov|Dec"
+    # Put two-digit alternatives first so ``30`` is not truncated to ``3``.
+    day_pattern = r"(?:3[01]|[12][0-9]|0?[1-9])(?:st|nd|rd|th)?(?!\d)"
+    patterns = (
+        re.compile(rf"(?P<day>{day_pattern})\s*[- ]\s*(?P<month>{month_pattern})(?:[ ,/-]+(?P<year>20\d{{2}}))?", re.I),
+        re.compile(rf"(?P<month>{month_pattern})\s*[- ]\s*(?P<day>{day_pattern})(?:,?\s*(?P<year>20\d{{2}}))?", re.I),
+    )
+    spans: set[tuple[int, int]] = set()
+    for pattern in patterns:
+        for match in pattern.finditer(raw):
+            month = _month_number(match.group("month"))
+            day = int(re.sub(r"\D", "", match.group("day")))
+            year = int(match.group("year")) if match.group("year") else None
+            if not month or (match.start(), match.end()) in spans:
+                continue
+            spans.add((match.start(), match.end()))
+            display_month = datetime(2000, month, 1).strftime("%B")
+            display = f"{display_month} {day}" + (f", {year}" if year else "")
+            found.append(
+                DeadlineOccurrence(
+                    month=month,
+                    day=day,
+                    year=year,
+                    display=display,
+                    precision="exact" if year else "month_day",
+                    source=source,
+                    source_url=source_url,
+                    confidence=confidence if confidence in {"high", "medium"} else "unknown",
+                    recurring=year is None,
+                )
+            )
+    if found:
+        return found
+    month_only = re.findall(rf"\b({month_pattern})\b", raw, re.I)
+    for month_text in month_only:
+        month = _month_number(month_text)
+        if month:
+            display = datetime(2000, month, 1).strftime("%B")
+            found.append(
+                DeadlineOccurrence(
+                    month=month,
+                    display=display,
+                    precision="month",
+                    source=source,
+                    source_url=source_url,
+                    confidence="medium" if confidence != "unknown" else "unknown",
+                    recurring=True,
+                )
+            )
+    return found
+
+
+def resolve_deadlines(
+    sources: list[tuple[str | None, str, str | None, str]], *, today: date | None = None
+) -> dict[str, Any]:
+    """Resolve source priority, conflicts, and the next recurring deadline."""
+    parsed: list[DeadlineOccurrence] = []
+    source_values: list[tuple[str, str, str | None]] = []
+    for raw, source, source_url, confidence in sources:
+        occurrences = parse_deadline_text(raw, source=source, source_url=source_url, confidence=confidence)
+        parsed.extend(occurrences)
+        if raw and occurrences:
+            source_values.append((_clean_text(raw), source, source_url))
+    if not parsed:
+        return {
+            "deadline": None,
+            "deadline_display": "Not found",
+            "deadline_precision": "unknown",
+            "deadline_source": None,
+            "deadline_source_url": None,
+            "deadline_confidence": "unknown",
+            "deadline_month": None,
+            "deadline_day": None,
+            "deadlines": [],
+            "next_deadline": None,
+            "next_deadline_display": None,
+            "deadline_conflict": False,
+            "other_deadlines": [],
+        }
+    highest = min(DEADLINE_PRIORITY.get(item.source or "", 99) for item in parsed)
+    selected = [item for item in parsed if DEADLINE_PRIORITY.get(item.source or "", 99) == highest]
+    primary = selected[0]
+    unique_values = {(item.month, item.day, item.year, item.precision) for item in parsed}
+    other = [
+        DeadlineConflict(value=value, source=source, source_url=url)
+        for value, source, url in source_values
+        if source != primary.source and value != primary.display
+    ]
+    today = today or date.today()
+    upcoming: list[tuple[date, DeadlineOccurrence, str]] = []
+    for item in selected:
+        if item.month is None:
+            continue
+        if item.year:
+            try:
+                candidate = date(item.year, item.month, item.day or 1)
+            except ValueError:
+                continue
+            display = item.display
+        else:
+            candidate_year = today.year
+            try:
+                candidate = date(candidate_year, item.month, item.day or 1)
+            except ValueError:
+                continue
+            if candidate < today:
+                try:
+                    candidate = date(candidate_year + 1, item.month, item.day or 1)
+                except ValueError:
+                    continue
+            display = f"{datetime(candidate.year, item.month, 1).strftime('%B')} {item.day or ''}".strip() + f", {candidate.year}"
+        if candidate >= today:
+            upcoming.append((candidate, item, display))
+    upcoming.sort(key=lambda item: item[0])
+    next_item = upcoming[0] if upcoming else None
+    recurring = primary.recurring
+    return {
+        "deadline": date(primary.year, primary.month, primary.day or 1).isoformat() if primary.year and primary.month else None,
+        "deadline_display": primary.display,
+        "deadline_precision": primary.precision,
+        "deadline_source": primary.source,
+        "deadline_source_url": primary.source_url,
+        "deadline_confidence": primary.confidence,
+        "deadline_month": primary.month,
+        "deadline_day": primary.day,
+        "deadlines": parsed if recurring or len(parsed) > 1 else selected,
+        "next_deadline": next_item[0].isoformat() if next_item else None,
+        "next_deadline_display": next_item[2] if next_item else None,
+        "deadline_conflict": len(unique_values) > len({(item.month, item.day, item.year, item.precision) for item in selected}),
+        "other_deadlines": other,
+    }
 
 
 class SafeUPEIWebClient:
@@ -237,6 +406,8 @@ class ScholarshipDiscoveryService:
                 {**fallback, "detail_status": "source_only"},
                 fallback["source_url"],
             )
+        if record.application_url:
+            record = self._enrich_application_metadata(record)
         with self._lock:
             self._details[scholarship_id] = record
         return record
@@ -273,6 +444,7 @@ class ScholarshipDiscoveryService:
                     "deadline": _clean_text(deadline_node.get_text(" ", strip=True)) or None
                     if deadline_node
                     else None,
+                    "_deadline_source": "upei_directory",
                     "source_url": source_url,
                     "source_title": f"UPEI Scholarships & Awards — {name}",
                     "search_text": f"{name} {description} {row_text}".casefold(),
@@ -305,7 +477,12 @@ class ScholarshipDiscoveryService:
                 links[key] = urljoin(source_url, str(link.get("href")))
         combined = {**fallback, **fields}
         combined["name"] = _clean_text(heading.get_text(" ", strip=True)) if heading else fallback.get("name")
-        combined["application_url"] = links.get("Application Form")
+        combined["application_url"] = (
+            links.get("Application Form")
+            or links.get("Application")
+            or links.get("Apply")
+            or fallback.get("application_url")
+        )
         combined["detail_status"] = "extracted"
         return cls._record_from_fields(combined, source_url)
 
@@ -385,11 +562,34 @@ class ScholarshipDiscoveryService:
             ),
             None,
         )
+        deadline_sources: list[tuple[str | None, str, str | None, str]] = []
+        detail_deadline = fields.get("Deadline") or fields.get("Application Deadline") or fields.get("Closing Date") or fields.get("Due Date")
+        if detail_deadline:
+            deadline_sources.append((str(detail_deadline), "individual_award_page", source_url, "high"))
+        if fields.get("deadline"):
+            deadline_sources.append((str(fields["deadline"]), str(fields.get("_deadline_source") or "upei_directory"), source_url, "high"))
+        cycle_deadline = fields.get("cycle_deadline") or fields.get("award_cycle_deadline")
+        if cycle_deadline:
+            deadline_sources.append((str(cycle_deadline), str(fields.get("_cycle_source") or "award_cycle_page"), str(fields.get("cycle_url") or source_url), "medium"))
+        deadline_info = resolve_deadlines(deadline_sources)
+        email_matches = re.findall(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", f"{description} {full_text}", re.I)
+        submission_email = str(fields.get("submission_email") or (email_matches[0] if email_matches else "")) or None
+        required_documents = cls._infer_required_documents(full_text)
+        submission_method = str(fields.get("submission_method") or "unknown")
+        if submission_method not in {"portal", "email", "external_form", "unknown"}:
+            submission_method = "unknown"
+        if submission_email:
+            submission_method = "email"
+        elif application_url:
+            submission_method = "external_form"
+        application_status = cls._infer_application_status(
+            fields.get("application_status") or fields.get("cycle_status") or description
+        )
         return ScholarshipRecord(
             id=str(fields.get("id") or _award_id(source_url)),
             name=name,
             amount=_money(str(fields.get("Maximum Amount") or fields.get("amount") or "")),
-            deadline=_clean_text(str(fields.get("Deadline") or fields.get("deadline") or "")) or None,
+            **deadline_info,
             description=description,
             faculty=cls._list_field(fields.get("Faculty") or fields.get("faculty")),
             major=cls._infer_majors(full_text),
@@ -402,10 +602,66 @@ class ScholarshipDiscoveryService:
             reference_required=True if re.search(r"reference letter|letter of reference|references? required", full_text) else None,
             application_required=True if application_url else None,
             application_url=str(application_url) if application_url else None,
+            submission_method=submission_method,
+            submission_email=submission_email,
+            required_documents=required_documents,
+            application_status=application_status,
             source_url=source_url,
             source_title=str(fields.get("source_title") or f"UPEI Scholarships & Awards — {name}"),
             detail_status=str(fields.get("detail_status") or "extracted"),
         )
+
+    def _enrich_application_metadata(self, scholarship: ScholarshipRecord) -> ScholarshipRecord:
+        try:
+            html = self.web_client.fetch_html(str(scholarship.application_url))
+        except ScholarshipResearchError:
+            return scholarship
+        text = _clean_text(BeautifulSoup(html, "html.parser").get_text(" ", strip=True))
+        emails = re.findall(r"\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\b", text, re.I)
+        deadline_sources = []
+        if scholarship.deadline_display:
+            deadline_sources.append((scholarship.deadline_display, scholarship.deadline_source or "individual_award_page", scholarship.deadline_source_url or scholarship.source_url, scholarship.deadline_confidence))
+        application_deadline_text = " ".join(
+            sentence
+            for sentence in re.split(r"(?<=[.!?])\s+", text)
+            if re.search(r"deadline|closing date|due date|applications? due|submit by", sentence, re.I)
+        )
+        if application_deadline_text:
+            deadline_sources.append((application_deadline_text, "application_page", scholarship.application_url, "high"))
+        deadline_info = resolve_deadlines(deadline_sources)
+        updates = {**deadline_info}
+        if emails:
+            updates.update({"submission_email": emails[0], "submission_method": "email"})
+        updates["required_documents"] = sorted(set(scholarship.required_documents + self._infer_required_documents(text)))
+        inferred_status = self._infer_application_status(text)
+        updates["application_status"] = inferred_status if inferred_status != "unknown" else scholarship.application_status
+        if hasattr(scholarship, "model_copy"):
+            return scholarship.model_copy(update=updates)
+        return scholarship.copy(update=updates)
+
+    @staticmethod
+    def _infer_required_documents(text: str) -> list[str]:
+        labels = (
+            (r"personal statement|essay", "Personal statement"),
+            (r"reference letter|letter of reference|references? required", "Reference letter"),
+            (r"financial need form|financial need statement", "Financial need form"),
+            (r"official transcript|transcript", "Official transcript"),
+            (r"supporting document|supporting documentation", "Supporting documents"),
+        )
+        return [label for pattern, label in labels if re.search(pattern, text, re.I)]
+
+    @staticmethod
+    def _infer_application_status(value: Any) -> str:
+        text = _clean_text(str(value or "")).casefold()
+        if not text:
+            return "unknown"
+        if re.search(r"\bclosed\b|not currently accepting|no longer accepting", text):
+            return "closed"
+        if re.search(r"\bupcoming\b|opens? soon|opens? on|will open", text):
+            return "upcoming"
+        if re.search(r"open for applications|accepting applications|applications? are being accepted|applications? open", text):
+            return "open"
+        return "unknown"
 
     @staticmethod
     def _list_field(value: Any) -> list[str]:

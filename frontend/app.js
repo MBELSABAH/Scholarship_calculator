@@ -52,6 +52,16 @@ const formatCurrency = (value) => value === null || value === undefined ? "—" 
   style: "currency", currency: "CAD", maximumFractionDigits: 0,
 });
 
+function scholarshipDeadlineLabel(scholarship) {
+  if (scholarship.next_deadline_display) return `Next deadline: ${scholarship.next_deadline_display}`;
+  if (scholarship.deadline_display && scholarship.deadline_display !== "Not found") {
+    const precisionNote = scholarship.deadline_precision === "month" ? " · Exact day not listed" : "";
+    return `Deadline: ${scholarship.deadline_display}${precisionNote}`;
+  }
+  if (scholarship.deadline) return `Deadline: ${scholarship.deadline}`;
+  return "Deadline not found · Check official page";
+}
+
 const formatYear = (year) => escapeHtml(String(year).replace("-", "–"));
 const formatOrdinal = (value) => {
   const number = Number(value);
@@ -434,7 +444,7 @@ function renderScholarshipMatches() {
         </div>
         <ul class="match-facts">${facts || "<li>Official criteria available in the detail view.</li>"}</ul>
         <div class="match-card-footer">
-          <span>${scholarship.deadline ? `Deadline: ${escapeHtml(scholarship.deadline)}` : "Deadline not listed"}</span>
+          <span>${escapeHtml(scholarshipDeadlineLabel(scholarship))}</span>
           <span class="match-card-actions">${viewAction}${applyAction}</span>
         </div>
       </article>`;
@@ -514,7 +524,7 @@ async function openScholarshipDetail(scholarshipId) {
         <div><h4>Still to verify</h4><ul>${[...match.missing_information, ...match.known_conflicts].map((item) => `<li>? ${escapeHtml(item)}</li>`).join("") || "<li>No missing criteria identified from the published page.</li>"}</ul></div>
       </div>
       <div class="detail-meta">
-        <span>${scholarship.deadline ? `Deadline: ${escapeHtml(scholarship.deadline)}` : "Deadline not listed"}</span>
+        <span>${escapeHtml(scholarshipDeadlineLabel(scholarship))}</span>
         ${source ? `<span class="official-source">Official source: <a href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceTitle)}</a></span>` : ""}
       </div>
       <div class="detail-actions">
@@ -646,8 +656,10 @@ function renderApplication(state) {
     ${state.next_question ? `<div class="application-next-question"><span>Next question</span><strong>${escapeHtml(state.next_question)}</strong></div>` : ""}
     ${state.fields.length ? `<div class="application-fields">${fieldRows}</div>` : '<div class="application-empty">No machine-readable application fields were available. Review the official award page before proceeding.</div>'}
     <div id="application-preview" class="application-preview" hidden></div>
+    <div id="email-preview" class="email-preview" hidden></div>
     <div class="application-actions">
       <button type="button" class="secondary-action" id="prepare-preview-button" ${state.fields.length ? "" : "disabled"}>Review application</button>
+      ${state.submission_method === "email" ? '<button type="button" class="secondary-action" id="prepare-email-button">Preview Email</button>' : ""}
       <button type="button" class="approve-submit" id="approve-submit-button" disabled>Approve &amp; Submit</button>
     </div>
     <p class="application-boundary">Sensitive facts must come from you. A live application is never submitted automatically; approval records readiness for manual submission in the official system.</p>`;
@@ -677,7 +689,44 @@ function renderApplication(state) {
     });
   });
   applicationView.querySelector("#prepare-preview-button")?.addEventListener("click", () => prepareApplicationPreview(state.application_id));
+  applicationView.querySelector("#prepare-email-button")?.addEventListener("click", () => prepareApplicationEmail(state.application_id));
   applicationView.querySelector("#approve-submit-button")?.addEventListener("click", () => approveAndSubmit(state.application_id));
+}
+
+function refreshMailtoDraft() {
+  const link = applicationView.querySelector("#open-email-draft");
+  const subject = applicationView.querySelector("#email-subject")?.value || "";
+  const body = applicationView.querySelector("#email-body")?.value || "";
+  const to = applicationView.querySelector("#email-to")?.textContent?.trim() || "";
+  if (link && to) link.href = `mailto:${to}?subject=${encodeURIComponent(subject)}&body=${encodeURIComponent(body)}`;
+}
+
+function renderEmailPreview(draft) {
+  const panel = applicationView.querySelector("#email-preview");
+  if (!panel) return;
+  panel.hidden = false;
+  panel.innerHTML = `
+    <span class="eyebrow">Email preview</span>
+    <label>To <strong id="email-to">${escapeHtml(draft.to || "Not found")}</strong></label>
+    <label for="email-subject">Subject</label>
+    <input id="email-subject" type="text" value="${escapeHtml(draft.subject)}" />
+    <label for="email-body">Message</label>
+    <textarea id="email-body" rows="9">${escapeHtml(draft.body)}</textarea>
+    <div class="email-attachments"><strong>Attachments</strong>${draft.attachments_required.length ? `<ul>${draft.attachments_required.map((item) => `<li>Attach ${escapeHtml(item)}</li>`).join("")}</ul>` : "<p>No official attachments were identified.</p>"}</div>
+    ${draft.missing_fields.length ? `<p class="email-warning">${escapeHtml(draft.ready ? "" : `Not ready yet: ${draft.missing_fields.join("; ")}`)}</p>` : ""}
+    <a id="open-email-draft" class="primary-inline" href="${escapeHtml(draft.ready && draft.mailto_url ? draft.mailto_url : "#")}" ${draft.ready && draft.mailto_url ? 'target="_blank" rel="noopener noreferrer"' : 'aria-disabled="true"'}>Open Email Draft</a>`;
+  applicationView.querySelector("#email-subject")?.addEventListener("input", refreshMailtoDraft);
+  applicationView.querySelector("#email-body")?.addEventListener("input", refreshMailtoDraft);
+}
+
+async function prepareApplicationEmail(applicationId) {
+  try {
+    const draft = await apiRequest(`/api/applications/${encodeURIComponent(applicationId)}/email`, { method: "POST" });
+    renderEmailPreview(draft);
+    renderChatSuggestions(draft.ready ? ["Open Email Draft", "What attachments are needed?"] : ["What is still missing?", "Review application"]);
+  } catch (error) {
+    addChatMessage("assistant", error.message, true);
+  }
 }
 
 async function prepareApplicationPreview(applicationId) {

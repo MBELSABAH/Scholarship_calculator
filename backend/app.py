@@ -234,6 +234,15 @@ def prepare_application(application_id: str) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
 
+@app.post("/api/applications/{application_id}/email")
+def prepare_application_email(application_id: str) -> dict:
+    _connected_snapshot()
+    try:
+        return SCHOLARSHIP_SESSION.prepare_application_email(application_id).model_dump()
+    except ValueError as exc:
+        raise HTTPException(status_code=422, detail=str(exc)) from None
+
+
 @app.post("/api/applications/{application_id}/approve-submit")
 def approve_and_submit(
     application_id: str, request: ApproveSubmissionRequest
