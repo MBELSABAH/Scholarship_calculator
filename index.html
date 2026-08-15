@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Academic Copilot</title>
+  <meta name="description" content="Academic Copilot turns a university record into personalized scholarship matches, application guidance, and ready-to-submit materials." />
+  <link rel="stylesheet" href="pages.css" />
+</head>
+<body>
+  <header class="nav">
+    <a class="brand" href="#">Academic Copilot</a>
+    <a class="source" href="https://github.com/MBELSABAH/Scholarship_calculator" target="_blank" rel="noreferrer">View GitHub</a>
+  </header>
+
+  <main>
+    <section class="hero">
+      <span class="eyebrow">AI scholarship agent</span>
+      <h1>Your academic record, turned into opportunities.</h1>
+      <p class="lead">Academic Copilot connects a student's university record to official scholarship sources, ranks relevant awards, explains eligibility, and guides the student through the application process.</p>
+      <div class="hero-actions">
+        <a class="primary" href="#demo">View demo</a>
+        <a class="secondary" href="https://github.com/MBELSABAH/Scholarship_calculator/tree/hackathon-academic-agent" target="_blank" rel="noreferrer">Source code</a>
+      </div>
+    </section>
+
+    <section id="demo" class="product-shell">
+      <div class="topbar">
+        <div><strong>Academic Copilot</strong><span class="live">Demo record</span></div>
+        <span class="avatar">MC</span>
+      </div>
+      <div class="layout">
+        <section class="dashboard">
+          <div class="welcome"><span class="eyebrow">Academic overview</span><h2>Good morning, Maya.</h2><p>Here’s the story your academic record tells today.</p></div>
+          <div class="stats">
+            <article><span>Cumulative GPA</span><strong>4.09</strong><small>out of 4.3</small></article>
+            <article><span>Completed credits</span><strong>54</strong><small>academic progress</small></article>
+            <article><span>Year of study</span><strong>3rd</strong><small>calculated from credits</small></article>
+            <article><span>Latest scholarship</span><strong>$2,000</strong><small>2025–2026</small></article>
+          </div>
+
+          <div class="section-head"><div><span class="eyebrow">Official opportunities</span><h3>Scholarships for you</h3></div><button disabled>Find scholarships</button></div>
+          <div class="award-grid">
+            <article class="award"><div><span class="match excellent">Excellent match</span><h4>UPEI Academic Excellence Award</h4><p>Matches your academic standing, faculty, and year of study.</p></div><div class="award-meta"><span>Deadline: October 1</span><span>Official UPEI source</span></div></article>
+            <article class="award"><div><span class="match strong">Strong match</span><h4>Student Leadership Award</h4><p>Your academic profile matches; leadership details still need confirmation.</p></div><div class="award-meta"><span>Deadline: October</span><span>Exact day not confirmed</span></div></article>
+          </div>
+
+          <div class="section-head compact"><div><span class="eyebrow">Academic record</span><h3>Recent courses</h3></div></div>
+          <div class="courses">
+            <div><span>CS 2920</span><strong class="blue">92</strong></div>
+            <div><span>MATH 3010</span><strong class="blue">91</strong></div>
+            <div><span>CS 2910</span><strong class="blue">93</strong></div>
+            <div><span>BUS 2120</span><strong class="blue">96</strong></div>
+          </div>
+        </section>
+
+        <aside class="copilot">
+          <span class="eyebrow">Academic assistant</span>
+          <h3>Academic Copilot</h3>
+          <div class="context">Scholarship workflow</div>
+          <div class="messages">
+            <div class="user">Find scholarships I should apply for.</div>
+            <div class="assistant"><strong>I found several official UPEI awards that fit your profile.</strong><br><br>Your strongest matches use your faculty, year of study, completed credits, and academic performance. I’ll flag anything that still needs personal information before you apply.</div>
+            <div class="user">Help me apply to the best one.</div>
+            <div class="assistant">I can guide you through it. First, I’ll verify the official application requirements and ask only for information missing from your academic record.</div>
+          </div>
+          <div class="composer">Ask Academic Copilot… <span>→</span></div>
+          <small>Static public preview. Live UPEI login and AI tools run in the local FastAPI application.</small>
+        </aside>
+      </div>
+    </section>
+
+    <section class="features">
+      <article><span>01</span><h3>Understands the student</h3><p>Uses GPA, credits, program, year of study, course history, and confirmed background information.</p></article>
+      <article><span>02</span><h3>Searches official sources</h3><p>Finds and ranks university scholarships while keeping requirements, deadlines, and source links traceable.</p></article>
+      <article><span>03</span><h3>Helps complete applications</h3><p>Asks for missing information, drafts responses from user-provided facts, and prepares materials for review.</p></article>
+      <article><span>04</span><h3>Keeps humans in control</h3><p>Deterministic calculations and explicit review steps keep irreversible actions out of the agent's hands.</p></article>
+    </section>
+  </main>
+
+  <footer>Academic Copilot · Hackathon 2026 · Built by Mohamed Elsabah</footer>
+</body>
+</html>
