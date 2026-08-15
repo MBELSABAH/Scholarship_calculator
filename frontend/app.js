@@ -208,6 +208,9 @@ function resetChat() {
 
 function addChatMessage(role, message, isError = false, sources = []) {
   document.querySelector("#chat-empty")?.remove();
+  const previous = chatMessages.lastElementChild;
+  const previousBubble = previous?.querySelector(".chat-bubble");
+  if (previous?.classList.contains(role) && previousBubble?.textContent === String(message)) return;
   const row = document.createElement("div");
   row.className = `chat-message ${role}${isError ? " error" : ""}`;
   const label = document.createElement("span");
@@ -547,14 +550,15 @@ async function runScholarshipSearch({ announceInChat = false } = {}) {
       scholarshipResults.prepend(warning);
     }
     if (announceInChat) {
-      addChatMessage("assistant", `I found and ranked ${scholarshipMatches.length} scholarship opportunities. Open one to review the official criteria and match explanation.`, false, body.sources || []);
+      let announcement = `I found and ranked ${scholarshipMatches.length} scholarship opportunities. Open one to review the official criteria and match explanation.`;
       if (body.next_profile_question?.question) {
-        addChatMessage("assistant", body.next_profile_question.question);
+        announcement += `\n\n${body.next_profile_question.question}`;
         chatModes.scholarship.pendingQuestion = body.next_profile_question;
         renderChatSuggestions(body.next_profile_question.allowed_values || ["Not sure"]);
       } else {
         renderChatSuggestions(["Show my best match", "Which potential fits need info?"]);
       }
+      addChatMessage("assistant", announcement, false, body.sources || []);
     }
   } catch (error) {
     scholarshipResults.innerHTML = `<div class="discovery-empty error"><div><strong>Scholarship search unavailable</strong><p>${escapeHtml(error.message)}</p></div></div>`;
@@ -680,7 +684,6 @@ async function startScholarshipApplication(scholarshipId, { officialPageOpened =
       const destination = officialSourceUrl(state.destination_url);
       if (destination && destination !== immediateDestination) window.open(destination, "_blank", "noopener,noreferrer");
       renderExternalApplication(state);
-      addChatMessage("assistant", state.status_message);
       renderChatSuggestions(["What should I put here?", "Explain the requirements"]);
       const completedLabel = state.next_action === "open_official_application"
         ? "Open official application"

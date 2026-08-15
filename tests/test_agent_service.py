@@ -14,6 +14,7 @@ from backend.agent_service import (
     SYSTEM_PROMPT,
     contextual_suggestions,
     ConversationStore,
+    SCHOLARSHIP_SESSION,
 )
 
 
@@ -138,6 +139,83 @@ class AcademicAgentServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(gpa.message, "Your cumulative GPA is 4.094.")
         self.assertIn("CS —", subjects.message)
         self.assertEqual(client.calls, [])
+
+    async def test_extreme_synonyms_and_remaining_credits_route_deterministically(self):
+        record = load_demo_record()
+        record["student"] = {
+            **record["student"],
+            "completed_credits": 102,
+            "required_degree_credits": 120,
+        }
+        snapshot = build_academic_snapshot(record, source="demo")
+        service = AgentService(FakeModelClient([]))
+
+        for prompt in ("what are my top grades", "highest grades?", "best marks"):
+            result = await service.chat(prompt, snapshot)
+            self.assertEqual(len(result.message.splitlines()), 5, prompt)
+            self.assertEqual(result.tools_used, ["get_course_extremes"], prompt)
+        top_three = await service.chat("top 3 courses", snapshot)
+        remaining = await service.chat("how many credits left till graduation", snapshot)
+
+        self.assertEqual(len(top_three.message.splitlines()), 3)
+        self.assertEqual(
+            remaining.message,
+            "You have 18 credits remaining to reach 120 credits. You've completed 102.",
+        )
+
+    async def test_current_course_answer_and_explicit_attempt_history_are_distinct(self):
+        record = load_demo_record()
+        record["courses"] = [
+            {"academic_year": "2023-2024", "code": "CS-1910-02", "name": "Computer Science I", "grade": "0", "credits": 3},
+            {"academic_year": "2024-2025", "code": "CS-1910-01", "name": "Computer Science I", "grade": "100", "credits": 3},
+            {"academic_year": "2024-2025", "code": "MATH-1000-01", "name": "Mathematics", "grade": "60", "credits": 3},
+        ]
+        snapshot = build_academic_snapshot(record, source="demo")
+        service = AgentService(FakeModelClient([]))
+
+        lowest = await service.chat("What are my lowest grades?", snapshot)
+        current = await service.chat("What is my CS-1910 grade?", snapshot)
+        subject = await service.chat("How am I doing in CS?", snapshot)
+        history = await service.chat("Show every attempt of CS-1910", snapshot)
+
+        self.assertNotIn("CS-1910-02", lowest.message)
+        self.assertNotIn(" — 0% —", lowest.message)
+        self.assertIn("MATH-1000-01 — 60%", lowest.message)
+        self.assertIn("CS-1910-01 — 100%", current.message)
+        self.assertEqual(subject.message, "CS — 100.00% across 1 course")
+        self.assertIn("CS-1910-02 — 0% — 2023-2024", history.message)
+        self.assertIn("CS-1910-01 — 100% — 2024-2025", history.message)
+
+    async def test_discovery_cannot_open_application_without_explicit_apply_intent(self):
+        SCHOLARSHIP_SESSION.clear_student_state()
+        client = FakeModelClient(
+            [
+                model_response(
+                    content=None,
+                    tool_calls=[
+                        tool_call(
+                            "call_apply",
+                            "open_scholarship_application",
+                            '{"scholarship_id":"invented"}',
+                        )
+                    ],
+                ),
+                model_response(content="Open the official scholarship page to continue."),
+            ]
+        )
+        service = AgentService(client)
+
+        result = await service.chat("Find scholarships", self.snapshot, mode="scholarship")
+
+        self.assertEqual(result.tools_used, [])
+        self.assertEqual(SCHOLARSHIP_SESSION.applications, {})
+        self.assertNotIn("Open the official scholarship page", result.message)
+        self.assertFalse(
+            service._has_explicit_apply_intent(
+                "Which applications need more information?"
+            )
+        )
+        self.assertTrue(service._has_explicit_apply_intent("Help me apply"))
 
     async def test_unverified_model_course_never_reaches_user(self):
         client = FakeModelClient([model_response(content="ANTH-1010 was 84%.")])

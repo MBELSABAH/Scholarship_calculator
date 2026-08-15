@@ -23,6 +23,7 @@ from backend.agent_tools import (
     TOOL_DEFINITIONS,
     TOOL_FUNCTIONS,
     ToolExecutionError,
+    current_completed_course_records,
     execute_tool,
 )
 from backend.models import AcademicSnapshot
@@ -379,6 +380,7 @@ class AgentService:
                 )
             if re.search(r"\b(?:which|what) (?:applications?|scholarships?|awards?) (?:still )?need(?:s)? (?:more )?information\b|\bmissing (?:information|criteria)\b", question, re.I):
                 missing = SCHOLARSHIP_SESSION.get_missing_information()
+                pending = SCHOLARSHIP_SESSION.emit_next_profile_question()
                 if not missing:
                     answer = "No currently ranked scholarship has unresolved eligibility information."
                 else:
@@ -388,14 +390,17 @@ class AgentService:
                         labels = ", ".join(criterion["key"].replace("_", " ") for criterion in criteria)
                         lines.append(f"{item['name']} ({item['match_level'].title()}) — {labels}")
                     answer = "\n".join(lines)
+                if pending:
+                    answer += f"\n\n{pending['question']}"
                 self.conversations.append_turn(active_id, question, answer)
                 return AgentResult(
                     message=answer,
                     conversation_id=active_id,
                     tools_used=["get_scholarship_missing_information"],
-                    suggested_replies=["Continue eligibility questions"],
+                    suggested_replies=pending.get("allowed_values", []) if pending else ["Continue eligibility questions"],
                     sources=[],
                     ui_updates=[],
+                    pending_question=pending,
                 )
             if re.fullmatch(r"(?:i(?:'m| am)? )?in (?:the )?(?:faculty|school)", question.strip(), re.I):
                 missing = SCHOLARSHIP_SESSION.get_missing_information()
@@ -405,7 +410,7 @@ class AgentService:
                     for criterion in item["unresolved_required"] + item["unresolved_preferences"]
                     if criterion.get("question") and criterion.get("user_field")
                 ]
-                pending = SCHOLARSHIP_SESSION.next_profile_question() if len(unresolved) == 1 else None
+                pending = SCHOLARSHIP_SESSION.emit_next_profile_question() if len(unresolved) == 1 else None
                 answer = pending["question"] if pending else "I don't have one unambiguous pending eligibility criterion to attach that answer to. Please choose the scholarship or criterion you mean."
                 self.conversations.append_turn(active_id, question, answer)
                 return AgentResult(
@@ -479,6 +484,14 @@ class AgentService:
                     tool_id, name, arguments = self._parse_tool_call(tool_call)
                     started = time.monotonic()
                     try:
+                        if (
+                            mode == "scholarship"
+                            and name == "open_scholarship_application"
+                            and not self._has_explicit_apply_intent(question)
+                        ):
+                            raise ToolExecutionError(
+                                "Application state can start only after an explicit apply request."
+                            )
                         self._validate_draft_source(
                             name,
                             arguments,
@@ -567,6 +580,26 @@ class AgentService:
                 )
                 if pending_question["type"] == "boolean":
                     suggestions = ["Yes", "No", "I'm not sure"]
+            discovery_question = (
+                SCHOLARSHIP_SESSION.emit_next_profile_question()
+                if mode == "scholarship"
+                and set(tools_used)
+                & {
+                    "search_upei_scholarships",
+                    "rank_scholarship_matches",
+                    "get_scholarship_missing_information",
+                }
+                else None
+            )
+            if discovery_question and discovery_question["question"] not in answer:
+                answer = f"{answer}\n\n{discovery_question['question']}"
+            if mode == "scholarship" and not self._has_explicit_apply_intent(question):
+                answer = re.sub(
+                    r"(?:^|(?<=[.!?])\s+)Open the official scholarship page to continue\.[^\n]*",
+                    "",
+                    answer,
+                    flags=re.I,
+                ).strip() or "Scholarship discovery remains active; no application was started."
             self.conversations.append_turn(active_id, question, answer)
             return AgentResult(
                 message=answer,
@@ -575,7 +608,7 @@ class AgentService:
                 suggested_replies=suggestions,
                 sources=sources,
                 ui_updates=self._ui_updates(tools_used),
-                pending_question=SCHOLARSHIP_SESSION.next_profile_question() if mode == "scholarship" and tools_used else None,
+                pending_question=discovery_question,
             )
 
         raise AgentRoundsExceededError()
@@ -634,24 +667,24 @@ class AgentService:
         course_code_match = re.search(r"\b([A-Za-z]{2,8}[- ]\d{3,4}(?:-\d{1,3})?)\b", question)
 
         extreme_direction = None
-        if re.search(r"\b(?:lowest|worst|weakest)\b", lowered):
+        if re.search(r"\b(?:lowest|worst|weakest|bottom)\b", lowered) and re.search(
+            r"\b(?:course|grade|mark|result)s?\b", lowered
+        ):
             extreme_direction = "lowest"
-        elif re.search(r"\b(?:highest|best|strongest)\b", lowered) and re.search(r"\b(?:course|grade|mark|result)s?\b", lowered):
+        elif re.search(r"\b(?:highest|best|strongest|top)\b", lowered) and re.search(r"\b(?:course|grade|mark|result)s?\b", lowered):
             extreme_direction = "highest"
         if extreme_direction:
             count = self._requested_count(lowered, default=5)
-            courses = [
-                {**course.model_dump(), "academic_year": year.year}
-                for year in snapshot.academic_years
-                if not year_match or year.year == year_match.group(1)
-                for course in year.courses
-                if isinstance(course.grade, int) and not isinstance(course.grade, bool)
-            ]
-            courses.sort(
-                key=lambda course: (course["grade"], course["code"]),
-                reverse=extreme_direction == "highest",
+            result = execute_tool(
+                "get_course_extremes",
+                {"count": 20 if year_match else count, "direction": extreme_direction},
+                snapshot,
             )
-            courses = courses[:count]
+            courses = [
+                course
+                for course in result["courses"]
+                if not year_match or course["academic_year"] == year_match.group(1)
+            ][:count]
             self._last_academic_courses[(conversation_id, snapshot.snapshot_id)] = courses
             if not courses:
                 return "No graded courses match that request in your connected record.", ["get_course_extremes"], []
@@ -661,18 +694,41 @@ class AgentService:
             )
             return answer, ["get_course_extremes"], ["What years did I take those?", "Compare my subjects"]
 
-        if re.search(r"\bsubject(?:s| performance)?\b|\bdepartment(?:s)?\b", lowered) and re.search(r"\b(?:score|perform|highest|lowest|best|strong|weak|average)", lowered):
+        available_subjects = {
+            course.base_code.split("-")[0]
+            for year in snapshot.academic_years
+            for course in year.courses
+        }
+        requested_subject = next(
+            (
+                subject
+                for subject in sorted(available_subjects)
+                if re.search(rf"\b{re.escape(subject)}\b", question, re.I)
+            ),
+            None,
+        )
+        if (
+            re.search(r"\bsubject(?:s| performance)?\b|\bdepartment(?:s)?\b", lowered)
+            or requested_subject
+        ) and re.search(r"\b(?:doing|score|perform|highest|lowest|best|strong|weak|average)", lowered):
             result = execute_tool("get_subject_performance", {}, snapshot)
-            subjects = result["subjects"]
+            subjects = [
+                item
+                for item in result["subjects"]
+                if not requested_subject or item["subject"] == requested_subject
+            ]
             if not subjects:
                 answer = "No graded subject results are available in your connected record."
             else:
-                leading_subject = subjects[-1]["subject"] if re.search(r"\b(?:lowest|weak)", lowered) else subjects[0]["subject"]
+                leading_subject = requested_subject or (
+                    subjects[-1]["subject"]
+                    if re.search(r"\b(?:lowest|weak)", lowered)
+                    else subjects[0]["subject"]
+                )
                 contextual_courses = [
-                    {**course.model_dump(), "academic_year": year.year}
-                    for year in snapshot.academic_years
-                    for course in year.courses
-                    if course.base_code.split("-")[0] == leading_subject
+                    course
+                    for course in current_completed_course_records(snapshot)
+                    if course["base_code"].split("-")[0] == leading_subject
                 ]
                 self._last_academic_courses[(conversation_id, snapshot.snapshot_id)] = contextual_courses
                 answer = "\n".join(
@@ -685,6 +741,19 @@ class AgentService:
             value = snapshot.student.cumulative_gpa
             answer = "Your cumulative GPA is unavailable in the connected record." if value is None else f"Your cumulative GPA is {value:.3f}."
             return answer, ["get_student_summary"], ["How many credits have I completed?", "What if I get 90 next term?"]
+
+        if re.search(
+            r"\b(?:credits? (?:left|remaining)|how many more credits?|credits? (?:until|till) graduation)\b",
+            lowered,
+        ):
+            completed = snapshot.student.completed_credits
+            required = snapshot.student.required_degree_credits
+            remaining = max(required - completed, 0)
+            return (
+                f"You have {remaining:g} credits remaining to reach {required:g} credits. You've completed {completed:g}.",
+                ["get_student_summary"],
+                ["What is my cumulative GPA?", "What year of study am I in?"],
+            )
 
         if re.search(r"\b(?:completed\s+)?credits?|credit hours?\b", lowered) and not re.search(r"\b(?:course|each)\b", lowered):
             return (
@@ -753,16 +822,44 @@ class AgentService:
             )
             return answer, ["get_scholarship_summary"], []
 
-        if re.search(r"\brepeated courses?\b|\bretak(?:e|en|ing)\b", lowered):
+        history_request = bool(
+            re.search(
+                r"\b(?:all|every|each) (?:my )?.*attempts?\b|\b(?:first|earliest|previous|prior)\b.*\b(?:grade|attempt)\b|\bdid i ever fail\b|\brepeated courses?\b|\bretak(?:e|en|ing)\b",
+                lowered,
+            )
+        )
+        if history_request:
             attempts: dict[str, list[dict[str, Any]]] = {}
             for year in snapshot.academic_years:
                 for course in year.courses:
+                    if course_code_match:
+                        requested = course_code_match.group(1).replace(" ", "-").upper()
+                        if requested not in {course.code.upper(), course.base_code.upper()}:
+                            continue
                     attempts.setdefault(course.base_code, []).append({**course.model_dump(), "academic_year": year.year})
-            repeated = [course for courses in attempts.values() if len(courses) > 1 for course in courses]
+            if "fail" in lowered:
+                repeated = [
+                    course
+                    for courses in attempts.values()
+                    for course in courses
+                    if isinstance(course["grade"], int) and course["grade"] < 50
+                ]
+            elif re.search(r"\b(?:first|earliest)\b", lowered):
+                repeated = [courses[0] for courses in attempts.values() if courses]
+            else:
+                repeated = [course for courses in attempts.values() if len(courses) > 1 or course_code_match for course in courses]
             self._last_academic_courses[(conversation_id, snapshot.snapshot_id)] = repeated
-            answer = "No repeated courses are present in your connected record." if not repeated else "\n".join(
-                f"{course['code']} — {course['grade']}{'%' if isinstance(course['grade'], int) else ''} — {course['academic_year']}" for course in repeated
-            )
+            if repeated:
+                answer = "\n".join(
+                    f"{course['code']} — {course['grade']}{'%' if isinstance(course['grade'], int) else ''} — {course['academic_year']}"
+                    for course in repeated
+                )
+            elif "fail" in lowered:
+                answer = "No failed numeric course attempts are present in your connected record."
+            elif course_code_match:
+                answer = "I can't find that course attempt in your connected academic record."
+            else:
+                answer = "No repeated courses are present in your connected record."
             return answer, ["get_academic_record"], []
 
         if re.search(r"\b(?:how many|number of|course count)\b.*\bcourses?\b", lowered):
@@ -783,10 +880,9 @@ class AgentService:
         if course_code_match:
             requested = course_code_match.group(1).replace(" ", "-").upper()
             found = [
-                {**course.model_dump(), "academic_year": year.year}
-                for year in snapshot.academic_years
-                for course in year.courses
-                if requested in {course.code.upper(), course.base_code.upper()}
+                course
+                for course in current_completed_course_records(snapshot)
+                if requested in {course["code"].upper(), course["base_code"].upper()}
             ]
             self._last_academic_courses[(conversation_id, snapshot.snapshot_id)] = found
             if not found:
@@ -879,6 +975,16 @@ class AgentService:
         if any(year not in valid_years for year in re.findall(r"\b20\d{2}-20\d{2}\b", answer)):
             return False
         return True
+
+    @staticmethod
+    def _has_explicit_apply_intent(question: str) -> bool:
+        return bool(
+            re.search(
+                r"\b(?:apply(?:ing)?(?: for)?|start (?:an? )?application|help me apply|open (?:an? )?application)\b",
+                question,
+                re.I,
+            )
+        )
 
     @staticmethod
     def _pending_application_question(

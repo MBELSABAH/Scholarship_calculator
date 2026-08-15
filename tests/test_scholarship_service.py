@@ -308,6 +308,18 @@ class ScholarshipSessionTests(unittest.TestCase):
 
         self.assertTrue(all(item.match_level == "excellent" for item in ranked))
         self.assertFalse(any(item.key == "faculty_match" and item.status == "unknown" for match in ranked for item in match.criteria))
+        faculty_criteria = [
+            item
+            for match in ranked
+            for item in match.criteria
+            if item.key == "faculty_match"
+        ]
+        self.assertTrue(all(item.resolution_source == "institutional_mapping" for item in faculty_criteria))
+        self.assertTrue(all(item.normalized_student_faculty == "science" for item in faculty_criteria))
+        self.assertIn(
+            "School/faculty requirement matches your connected SMCS program.",
+            ranked[0].known_matches,
+        )
 
     def test_confirmed_ambiguous_faculty_is_saved_and_reranked_with_transition(self):
         award = demo_scholarship(
@@ -318,7 +330,7 @@ class ScholarshipSessionTests(unittest.TestCase):
         session = ScholarshipSession(StubDiscovery(award))
         search = ScholarshipSearchResult(scholarships=[award], source_mode="demo_fallback", sources=[])
         before = session.rank(search, self.snapshot)[0]
-        pending = session.next_profile_question()
+        pending = session.emit_next_profile_question()
 
         self.assertEqual(before.match_level, "potential")
         self.assertEqual(pending["criterion_key"], "faculty_match")
@@ -349,7 +361,7 @@ class ScholarshipSessionTests(unittest.TestCase):
         )
         search = ScholarshipSearchResult(scholarships=[scholarship], source_mode="demo_fallback", sources=[])
         self.session.rank(search, self.snapshot)
-        pending = self.session.next_profile_question()
+        pending = self.session.emit_next_profile_question()
         self.assertEqual(pending["field"], "gender_identity_criterion")
         clarification = self.session.resolve_pending_question("which specific gender", self.snapshot)
         self.assertFalse(clarification["resolved"])
@@ -372,12 +384,83 @@ class ScholarshipSessionTests(unittest.TestCase):
         ]
         search = ScholarshipSearchResult(scholarships=awards, source_mode="demo_fallback", sources=[])
         self.session.rank(search, self.snapshot)
-        first = self.session.next_profile_question()
+        first = self.session.emit_next_profile_question()
         self.assertEqual(first["field"], "financial_need")
         next_step = self.session.resolve_pending_question("Yes", self.snapshot)
         self.assertTrue(next_step["resolved"])
         self.assertEqual(next_step["pending_question"]["field"], "international_student")
-        self.assertEqual(next_step["message"], "Are you an international student?")
+        self.assertIn("Are you an international student?", next_step["message"])
+
+    def test_question_selection_is_pure_and_emission_counts_once(self):
+        self.session.rank(self.search, self.snapshot)
+
+        selected = self.session.select_next_question()
+        self.assertIsNotNone(selected)
+        self.assertEqual(self.session.discovery_questions_asked, 0)
+        self.assertIsNone(self.session.pending_question)
+
+        emitted = self.session.record_question_emitted(selected)
+        self.assertEqual(self.session.discovery_questions_asked, 1)
+        self.assertEqual(self.session.pending_question, emitted)
+        self.session.record_question_emitted(emitted)
+        self.assertEqual(self.session.discovery_questions_asked, 1)
+
+    def test_new_discovery_batch_resets_count_but_keeps_confirmed_facts(self):
+        scholarship = demo_scholarship(
+            description=(
+                "Available to a Computer Science student with financial need. "
+                "Applicant must be an international student."
+            ),
+            financial_need_required=True,
+            personal_statement_required=False,
+        )
+        session = ScholarshipSession(StubDiscovery(scholarship))
+        session.save_background_answer("financial_need", True, confirmed=True)
+        session.discovery_questions_asked = 5
+        session.rank(
+            ScholarshipSearchResult(
+                scholarships=[scholarship], source_mode="demo_fallback", sources=[]
+            ),
+            self.snapshot,
+        )
+
+        session.begin_discovery_batch()
+        pending = session.emit_next_profile_question()
+
+        self.assertEqual(session.discovery_questions_asked, 1)
+        self.assertEqual(pending["field"], "international_student")
+        self.assertTrue(session.get_background()["financial_need"])
+
+    def test_discovery_advances_until_five_questions_actually_emitted(self):
+        scholarship = demo_scholarship(
+            description=(
+                "Available to an international female student who graduated from a PEI high school "
+                "and has community involvement and leadership experience."
+            ),
+            financial_need_required=True,
+            personal_statement_required=False,
+            reference_required=False,
+        )
+        session = ScholarshipSession(StubDiscovery(scholarship))
+        search = ScholarshipSearchResult(
+            scholarships=[scholarship], source_mode="demo_fallback", sources=[]
+        )
+        session.rank(search, self.snapshot)
+        pending = session.emit_next_profile_question()
+        self.assertEqual(session.discovery_questions_asked, 1)
+
+        for expected_count in range(2, 6):
+            result = session.resolve_pending_question("Yes", self.snapshot)
+            pending = result["pending_question"]
+            self.assertIsNotNone(pending)
+            self.assertIn(pending["question"], result["message"])
+            self.assertEqual(session.discovery_questions_asked, expected_count)
+
+        capped = session.resolve_pending_question("Yes", self.snapshot)
+        self.assertIsNone(capped["pending_question"])
+        self.assertEqual(session.discovery_questions_asked, 5)
+        self.assertIn("five highest-impact questions", capped["message"])
+        self.assertIn("eligibility", capped["message"])
 
     def test_background_confirmation_draft_review_and_submission_gate(self):
         state = self.session.open_application(self.scholarship.id, self.snapshot)

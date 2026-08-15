@@ -130,7 +130,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_course_extremes",
-            "description": "Deterministically return the highest or lowest graded courses from the current connected snapshot, always including academic year. Use for course ranking questions.",
+            "description": "Deterministically return the highest or lowest numeric grades from the current connected snapshot, using only the latest completed attempt per base course and always including academic year. Use for course ranking questions.",
             "parameters": {
                 "type": "object",
                 "properties": {"count": {"type": "integer", "minimum": 1, "maximum": 20}, "direction": {"type": "string", "enum": ["highest", "lowest"]}},
@@ -143,7 +143,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_subject_performance",
-            "description": "Deterministically aggregate the complete current connected academic record by subject prefix. Use for subject-performance claims.",
+            "description": "Deterministically aggregate current performance by subject prefix using only the latest completed attempt per base course. Use for subject-performance claims.",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
         },
     },
@@ -461,12 +461,7 @@ def get_course_extremes(
     arguments = arguments or {}
     if set(arguments) != {"count", "direction"} or not isinstance(arguments.get("count"), int) or arguments["count"] < 1 or arguments["count"] > 20 or arguments.get("direction") not in {"highest", "lowest"}:
         raise ToolExecutionError("get_course_extremes requires count (1–20) and direction (highest or lowest).")
-    courses = [
-        {**_model_dump(course), "academic_year": year.year}
-        for year in snapshot.academic_years
-        for course in year.courses
-        if isinstance(course.grade, int) and not isinstance(course.grade, bool)
-    ]
+    courses = current_completed_course_records(snapshot)
     reverse = arguments["direction"] == "highest"
     courses.sort(key=lambda course: (course["grade"], course["code"]), reverse=reverse)
     return {"snapshot_id": snapshot.snapshot_id, "source": snapshot.source, "direction": arguments["direction"], "courses": courses[:arguments["count"]]}
@@ -477,17 +472,42 @@ def get_subject_performance(
 ) -> dict[str, Any]:
     _require_no_arguments(arguments or {})
     groups: dict[str, list[int]] = {}
-    for year in snapshot.academic_years:
-        for course in year.courses:
-            if isinstance(course.grade, int) and not isinstance(course.grade, bool):
-                subject = course.base_code.split("-")[0]
-                groups.setdefault(subject, []).append(course.grade)
+    for course in current_completed_course_records(snapshot):
+        subject = course["base_code"].split("-")[0]
+        groups.setdefault(subject, []).append(course["grade"])
     subjects = [
         {"subject": subject, "course_count": len(grades), "average_grade": round(sum(grades) / len(grades), 2)}
         for subject, grades in groups.items()
     ]
     subjects.sort(key=lambda item: (-item["average_grade"], -item["course_count"], item["subject"]))
     return {"snapshot_id": snapshot.snapshot_id, "source": snapshot.source, "subjects": subjects}
+
+
+def current_completed_course_records(snapshot: AcademicSnapshot) -> list[dict[str, Any]]:
+    """Return the latest numeric completed attempt for each base course code."""
+    attempts: dict[str, list[dict[str, Any]]] = {}
+    ordered_years = sorted(
+        enumerate(snapshot.academic_years), key=lambda item: (item[1].year, item[0])
+    )
+    for _, year in ordered_years:
+        for course_order, course in enumerate(year.courses):
+            if not isinstance(course.grade, int) or isinstance(course.grade, bool):
+                continue
+            attempts.setdefault(course.base_code, []).append(
+                {
+                    **_model_dump(course),
+                    "academic_year": year.year,
+                    "attempt_order": course_order,
+                }
+            )
+    current: list[dict[str, Any]] = []
+    for records in attempts.values():
+        latest = dict(records[-1])
+        latest.pop("attempt_order", None)
+        latest["repeated"] = len(records) > 1
+        latest["prior_attempts"] = len(records) - 1
+        current.append(latest)
+    return current
 
 
 def _current_quality_points(snapshot: AcademicSnapshot) -> tuple[float, float]:
@@ -598,6 +618,7 @@ def search_upei_scholarships(
     refresh = arguments.get("refresh", False)
     if not isinstance(refresh, bool):
         raise ToolExecutionError("refresh must be true or false.")
+    SCHOLARSHIP_SESSION.begin_discovery_batch()
     result = SCHOLARSHIP_SESSION.discovery.search(
         faculty=arguments.get("faculty") or snapshot.student.faculty,
         major=arguments.get("major")

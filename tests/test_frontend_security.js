@@ -15,5 +15,7 @@ assert.match(app, /passwordInput\.value = ""/);
 for (const handler of ["demoButton", "disconnectButton", "chatForm", "findScholarshipsButton", "setupSpeechRecognition"]) {
   assert.ok(app.includes(handler), `expected ${handler} wiring`);
 }
+assert.equal((app.match(/addChatMessage\("assistant", state\.status_message\)/g) || []).length, 0);
+assert.match(app, /previous\?\.classList\.contains\(role\).*previousBubble\?\.textContent/);
 
 console.log("Frontend login and bootstrap regression tests passed.");

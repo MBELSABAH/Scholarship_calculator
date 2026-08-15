@@ -68,16 +68,19 @@ def _year_numbers(labels: list[str]) -> set[int]:
     return numbers
 
 
-def _faculty_matches(student_faculty: str, published_faculty: str) -> bool:
+def _normalize_faculty(value: str) -> str:
     aliases = {
         "smcs": "science",
         "school of mathematical and computational sciences": "science",
         "faculty of science": "science",
     }
-    student_key = re.sub(r"\s+", " ", student_faculty.strip().casefold())
-    published_key = re.sub(r"\s+", " ", published_faculty.strip().casefold())
-    student = aliases.get(student_key, student_key)
-    published = aliases.get(published_key, published_key)
+    key = re.sub(r"\s+", " ", value.strip().casefold())
+    return aliases.get(key, key)
+
+
+def _faculty_matches(student_faculty: str, published_faculty: str) -> bool:
+    student = _normalize_faculty(student_faculty)
+    published = _normalize_faculty(published_faculty)
     return bool(student and (student in published or published in student))
 
 
@@ -172,7 +175,7 @@ class ScholarshipSession:
     def _criterion_key(text: str) -> str:
         lowered = text.casefold()
         mappings = (
-            ("faculty", "faculty_match"),
+            ("facult", "faculty_match"),
             ("financial need", "financial_need"),
             ("citizenship", "citizenship_status"),
             ("residency", "citizenship_status"),
@@ -263,8 +266,8 @@ class ScholarshipSession:
                 )
         return criteria
 
-    def next_profile_question(self) -> dict[str, Any] | None:
-        """Choose the unresolved official criterion that improves the most promising matches."""
+    def select_next_question(self) -> dict[str, Any] | None:
+        """Select the next question without mutating pending state or counters."""
         with self._lock:
             if self.pending_question:
                 return dict(self.pending_question)
@@ -274,8 +277,6 @@ class ScholarshipSession:
             return None
         candidates: dict[str, dict[str, Any]] = {}
         for match in matches:
-            if match.match_level not in {"potential", "strong"}:
-                continue
             for structured in match.criteria:
                 criterion = _model_dump(structured)
                 key = criterion["key"]
@@ -307,15 +308,33 @@ class ScholarshipSession:
             "allowed_values": choices,
             "question": candidate["question"],
         }
-        with self._lock:
-            self.pending_question = pending
-            self.discovery_questions_asked += 1
         return dict(pending)
 
-    def continue_discovery_interview(self) -> dict[str, Any] | None:
+    def record_question_emitted(self, question: dict[str, Any]) -> dict[str, Any]:
+        """Store a question and count it only when the caller will display it."""
         with self._lock:
+            if self.pending_question == question:
+                return dict(question)
+            self.pending_question = dict(question)
+            self.discovery_questions_asked += 1
+        return dict(question)
+
+    def emit_next_profile_question(self) -> dict[str, Any] | None:
+        question = self.select_next_question()
+        return self.record_question_emitted(question) if question else None
+
+    def next_profile_question(self) -> dict[str, Any] | None:
+        """Compatibility selector; selection alone deliberately has no side effects."""
+        return self.select_next_question()
+
+    def begin_discovery_batch(self) -> None:
+        with self._lock:
+            self.pending_question = None
             self.discovery_questions_asked = 0
-        return self.next_profile_question()
+
+    def continue_discovery_interview(self) -> dict[str, Any] | None:
+        self.begin_discovery_batch()
+        return self.emit_next_profile_question()
 
     def resolve_pending_question(self, message: str, snapshot: AcademicSnapshot) -> dict[str, Any] | None:
         with self._lock:
@@ -341,8 +360,8 @@ class ScholarshipSession:
             cached_search = getattr(self.discovery, "cached_search", None)
             search = cached_search() if callable(cached_search) else None
             matches, transitions = self.rank_with_transitions(search, snapshot) if search else ([], [])
-            next_question = self.next_profile_question()
-            response = next_question["question"] if next_question else self._interview_status_message(matches, transitions)
+            next_question = self.emit_next_profile_question()
+            response = self._response_after_answer(matches, transitions, next_question)
             return {"resolved": True, "message": response, "saved": saved, "matches": [_model_dump(item) for item in matches], "transitions": transitions, "pending_question": next_question}
         if pending.get("expected_answer_type") == "number" and re.fullmatch(r"\d+", lowered):
             saved = self.save_background_answer(field, int(lowered), confirmed=True)
@@ -351,8 +370,8 @@ class ScholarshipSession:
             cached_search = getattr(self.discovery, "cached_search", None)
             search = cached_search() if callable(cached_search) else None
             matches, transitions = self.rank_with_transitions(search, snapshot) if search else ([], [])
-            next_question = self.next_profile_question()
-            response = next_question["question"] if next_question else self._interview_status_message(matches, transitions)
+            next_question = self.emit_next_profile_question()
+            response = self._response_after_answer(matches, transitions, next_question)
             return {"resolved": True, "message": response, "saved": saved, "matches": [_model_dump(item) for item in matches], "transitions": transitions, "pending_question": next_question}
         if re.fullmatch(r"(?:yes|y|true)", lowered):
             value = True
@@ -390,11 +409,8 @@ class ScholarshipSession:
                     sources=[],
                 )
         matches, transitions = self.rank_with_transitions(search, snapshot) if search else ([], [])
-        next_question = self.next_profile_question()
-        if next_question:
-            response = next_question["question"]
-        else:
-            response = self._interview_status_message(matches, transitions)
+        next_question = self.emit_next_profile_question()
+        response = self._response_after_answer(matches, transitions, next_question)
         return {"resolved": True, "message": response, "saved": saved, "matches": [_model_dump(item) for item in matches], "transitions": transitions, "pending_question": next_question}
 
     def rank_with_transitions(
@@ -434,12 +450,42 @@ class ScholarshipSession:
             response = f"{name} moved from {labels[first['previous_level']]} to {labels[first['new_level']]} after reranking."
             if remaining:
                 noun = "detail" if remaining == 1 else "details"
-                response += f" {remaining} additional eligibility {noun} remain."
+                if self.discovery_questions_asked >= self.discovery_question_limit:
+                    response += f" I've resolved the five highest-impact questions. {remaining} additional eligibility {noun} remain."
+                else:
+                    response += f" {remaining} additional eligibility {noun} remain."
             return response
         if remaining:
             noun = "detail" if remaining == 1 else "details"
+            if self.discovery_questions_asked >= self.discovery_question_limit:
+                return f"I've resolved the five highest-impact questions. {remaining} additional eligibility {noun} remain."
             return f"I've resolved the highest-impact questions. {remaining} additional eligibility {noun} remain."
         return "All currently identified eligibility criteria have been resolved and the matches were reranked."
+
+    def _response_after_answer(
+        self,
+        matches: list[ScholarshipMatch],
+        transitions: list[dict[str, str]],
+        next_question: dict[str, Any] | None,
+    ) -> str:
+        if next_question:
+            if not transitions:
+                return next_question["question"]
+            labels = {
+                "excellent": "Excellent Match",
+                "strong": "Strong Match",
+                "potential": "Potential Fit",
+                "unlikely": "Unlikely Fit",
+            }
+            by_id = {match.scholarship_id: match for match in matches}
+            transition = transitions[0]
+            name = by_id[transition["scholarship_id"]].scholarship.name
+            return (
+                f"{name} moved from {labels[transition['previous_level']]} "
+                f"to {labels[transition['new_level']]} after reranking.\n\n"
+                f"{next_question['question']}"
+            )
+        return self._interview_status_message(matches, transitions)
 
     def get_missing_information(self) -> list[dict[str, Any]]:
         """Return deterministic unresolved criteria from the current ranked objects."""
@@ -475,6 +521,7 @@ class ScholarshipSession:
         keyword: str | None = None,
         refresh: bool = False,
     ) -> dict[str, Any]:
+        self.begin_discovery_batch()
         student = snapshot.student
         latest_average = next(
             (
@@ -512,7 +559,7 @@ class ScholarshipSession:
                     if value not in (None, [], "")
                 },
             },
-            "next_profile_question": self.next_profile_question(),
+            "next_profile_question": self.emit_next_profile_question(),
         }
 
     def rank(
@@ -538,6 +585,7 @@ class ScholarshipSession:
             missing: list[str] = []
             conflicts: list[str] = []
             eligibility_unknown = False
+            faculty_resolution_source: str | None = None
 
             if scholarship.major:
                 accepted = {major.casefold() for major in scholarship.major}
@@ -553,25 +601,30 @@ class ScholarshipSession:
                 is_open_faculty = any("all facult" in term for term in faculty_terms)
                 if is_open_faculty:
                     known_matches.append("The award is listed for all faculties.")
+                    faculty_resolution_source = "published_all_faculties"
                 elif any(
                     _faculty_matches(student_faculty, term)
                     for term in faculty_terms
                     if student_faculty
                 ):
                     known_matches.append(
-                        f"{snapshot.student.faculty} faculty or school matches the published requirement."
+                        f"School/faculty requirement matches your connected {snapshot.student.faculty} program."
                     )
+                    faculty_resolution_source = "institutional_mapping"
                 elif scholarship.id in background.faculty_confirmations:
                     known_matches.append(
                         "Student explicitly confirmed that the connected school satisfies the published faculty wording."
                     )
+                    faculty_resolution_source = "user_confirmation"
                 elif f"rejected:{scholarship.id}" in background.faculty_confirmations:
                     conflicts.append(
                         "Student reported that the connected school does not satisfy the published faculty wording."
                     )
+                    faculty_resolution_source = "user_confirmation"
                 else:
                     missing.append("The published faculty wording needs confirmation against the connected school.")
                     eligibility_unknown = True
+                    faculty_resolution_source = "unresolved"
             elif not scholarship.major:
                 known_matches.append("Open program criteria; no conflicting major was found.")
 
@@ -752,6 +805,19 @@ class ScholarshipSession:
             criteria = self._criteria_for_match(
                 scholarship, missing, known_matches, conflicts
             )
+            if scholarship.faculty:
+                for criterion in criteria:
+                    if criterion.key != "faculty_match":
+                        continue
+                    criterion.raw_scholarship_faculty = list(scholarship.faculty)
+                    criterion.normalized_scholarship_faculty = sorted(
+                        {_normalize_faculty(value) for value in scholarship.faculty}
+                    )
+                    criterion.raw_student_faculty = snapshot.student.faculty
+                    criterion.normalized_student_faculty = _normalize_faculty(
+                        snapshot.student.faculty or ""
+                    )
+                    criterion.resolution_source = faculty_resolution_source
             results.append(
                 ScholarshipMatch(
                     scholarship_id=scholarship.id,

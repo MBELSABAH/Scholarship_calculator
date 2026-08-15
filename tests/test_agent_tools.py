@@ -83,6 +83,28 @@ class AcademicAgentToolTests(unittest.TestCase):
         self.assertTrue(subjects["subjects"])
         self.assertIn("average_grade", subjects["subjects"][0])
 
+    def test_current_performance_collapses_repeated_courses_but_history_remains(self):
+        record = load_demo_record()
+        record["courses"] = [
+            {"academic_year": "2023-2024", "code": "CS-1910-02", "name": "Computer Science I", "grade": "0", "credits": 3},
+            {"academic_year": "2024-2025", "code": "CS-1910-01", "name": "Computer Science I", "grade": "100", "credits": 3},
+            {"academic_year": "2024-2025", "code": "MATH-1000-01", "name": "Mathematics", "grade": "60", "credits": 3},
+            {"academic_year": "2024-2025", "code": "COOP-0990-01", "name": "Co-op", "grade": "P", "credits": 0},
+        ]
+        snapshot = build_academic_snapshot(record, source="demo")
+
+        lowest = get_course_extremes(snapshot, {"count": 5, "direction": "lowest"})
+        subjects = get_subject_performance(snapshot)
+        history = get_academic_record(snapshot, {"course_code": "CS-1910"})
+
+        self.assertEqual([(item["base_code"], item["grade"]) for item in lowest["courses"]], [("MATH-1000", 60), ("CS-1910", 100)])
+        self.assertNotIn(0, [item["grade"] for item in lowest["courses"]])
+        self.assertEqual(next(item for item in subjects["subjects"] if item["subject"] == "CS")["average_grade"], 100)
+        self.assertEqual(
+            [(year["year"], year["courses"][0]["grade"]) for year in history["academic_years"]],
+            [("2023-2024", 0), ("2024-2025", 100)],
+        )
+
     def test_project_gpa_uses_mark_mapping_and_python_math(self):
         result = project_gpa(
             self.snapshot,

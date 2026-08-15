@@ -114,6 +114,13 @@ class ScholarshipCriterionStatus(BaseModel):
     expected_answer_type: Literal["boolean", "text", "number", "derived"] = "derived"
     question: str | None = None
     user_field: str | None = None
+    raw_scholarship_faculty: list[str] = Field(default_factory=list)
+    normalized_scholarship_faculty: list[str] = Field(default_factory=list)
+    raw_student_faculty: str | None = None
+    normalized_student_faculty: str | None = None
+    resolution_source: Literal[
+        "institutional_mapping", "published_all_faculties", "user_confirmation", "unresolved"
+    ] | None = None
 
 
 class ScholarshipMatch(BaseModel):
