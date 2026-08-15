@@ -71,7 +71,7 @@ Essay and personal-statement drafting is exempt from the short-answer limit. Whe
 SCHOLARSHIP_AGENT_SYSTEM_PROMPT = """For scholarship discovery and matching responses:
 - Keep ranked results compact and grounded only in scholarship tool results.
 - For scholarship discovery, show at most the top three matches with one short line each; the dashboard already shows the full ranked list. Do not restate the student's profile.
-- For “Why am I a match?”, use exactly the heading “Strong match because:” followed by at most four short bullets covering confirmed matches, missing information, and conflicts. Do not repeat the award title, amount, criteria paragraph, or source URL, and add no prose before or after the bullets.
+- Answer natural follow-ups about a match, value, conflict, or missing information from the current structured scholarship context. Use at most four short bullets when a list is clearer; otherwise answer conversationally.
 - Never fabricate criteria or a detail page when extraction is unavailable. Say that some details are available only on the official UPEI page and provide the preserved official source.
 - Distinguish a source-only scholarship page from a successfully extracted detail record.
 - Keep the exact official scholarship source URL available for verification."""
@@ -1103,29 +1103,49 @@ class AgentService:
             line_end = answer.find("\n", match.end())
             line = answer[line_start : None if line_end == -1 else line_end]
             percentages = [int(value) for value in re.findall(r"\b(\d{1,3})(?:\.\d+)?%", line)]
+            stated_grades = [
+                int(value)
+                for value in re.findall(
+                    r"\b(?:grade|mark|score)\s*(?:was|is|of|:)?\s*(\d{1,3})(?:\.\d+)?%?",
+                    line,
+                    re.I,
+                )
+            ]
             numeric_grades = {int(value) for value in by_code[code] if isinstance(value, int) and not isinstance(value, bool)}
-            if percentages and any(value not in numeric_grades for value in percentages):
+            if any(
+                value not in numeric_grades for value in [*percentages, *stated_grades]
+            ):
                 return False
-        allowed_percentages = {
-            round(float(value), 2)
+        percentage_facts = [
+            float(value)
             for value in [
                 *(course.grade for course in courses),
                 *(year.weighted_average for year in snapshot.academic_years),
                 *numeric_evidence("grade", "average_grade", "weighted_average"),
             ]
             if isinstance(value, (int, float)) and not isinstance(value, bool)
+        ]
+        allowed_percentages = {
+            round(value, precision)
+            for value in percentage_facts
+            for precision in (0, 1, 2)
         }
         for value in re.findall(r"\b(\d{1,3}(?:\.\d+)?)%", answer):
             if round(float(value), 2) not in allowed_percentages:
                 return False
-        allowed_gpas = {
-            round(float(value), 3)
+        gpa_facts = [
+            float(value)
             for value in [
                 snapshot.student.cumulative_gpa,
                 *(course.gpa for course in courses),
                 *numeric_evidence("gpa", "current_gpa", "projected_gpa"),
             ]
             if isinstance(value, (int, float)) and not isinstance(value, bool)
+        ]
+        allowed_gpas = {
+            round(value, precision)
+            for value in gpa_facts
+            for precision in (2, 3)
         }
         for value in re.findall(r"\bGPA\b[^\d]{0,20}(\d(?:\.\d+)?)", answer, re.I):
             if round(float(value), 3) not in allowed_gpas:

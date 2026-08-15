@@ -24,9 +24,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "function": {
             "name": "get_student_summary",
             "description": (
-                "Retrieve the student's current cumulative GPA, completed credits, "
-                "majors, and minors. Use this for factual questions about the student's "
-                "overall academic summary or completed credit count."
+                "Return the authoritative current student summary, including faculty, "
+                "majors, minors, year of study, cumulative GPA, and degree-credit progress. "
+                "Use when an exact overall profile or credit calculation is useful."
             ),
             "parameters": {
                 "type": "object",
@@ -40,9 +40,9 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "function": {
             "name": "get_scholarship_summary",
             "description": (
-                "Retrieve scholarship amounts and weighted averages produced by the "
-                "application's deterministic scholarship engine. Use this for scholarship "
-                "eligibility, award, yearly-average, and best-academic-year questions."
+                "Return deterministic scholarship history, acquired amounts, and weighted "
+                "academic-year averages. Use for scholarship-history, yearly-average, "
+                "strongest-year, or acquired-award comparisons."
             ),
             "parameters": {
                 "type": "object",
@@ -56,9 +56,10 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "function": {
             "name": "get_academic_record",
             "description": (
-                "Retrieve structured completed courses, grades, GPA values, letters, and "
-                "credits. Use this for questions about courses, grades, highest or lowest "
-                "marks, or a specific academic year. Filters are optional."
+                "Return the authoritative transcript records with course names, grades, GPA "
+                "values, credits, and academic years. Use for a specific course or year, "
+                "historical transcript questions, every attempt of a repeated course, or "
+                "year-over-year inspection. Filters are optional."
             ),
             "parameters": {
                 "type": "object",
@@ -130,7 +131,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_course_extremes",
-            "description": "Deterministically return the highest or lowest numeric grades from the current connected snapshot, using only the latest completed attempt per base course and always including academic year. Use for course ranking questions.",
+            "description": "Use when the student asks for highest, lowest, strongest, weakest, best, worst, top, bottom, or courses helping or hurting performance. Deterministically ranks individual numeric course grades from the current record, using only the latest completed attempt per base course and including academic year.",
             "parameters": {
                 "type": "object",
                 "properties": {"count": {"type": "integer", "minimum": 1, "maximum": 20}, "direction": {"type": "string", "enum": ["highest", "lowest"]}},
@@ -143,7 +144,7 @@ TOOL_DEFINITIONS: list[dict[str, Any]] = [
         "type": "function",
         "function": {
             "name": "get_subject_performance",
-            "description": "Deterministically aggregate current performance by subject prefix using only the latest completed attempt per base course. Use for subject-performance claims.",
+            "description": "Use when comparing course prefixes, subjects, or departments such as CS, MATH, MCS, or STAT, or asking which subject is strongest, weakest, better, worse, or dragging performance. Deterministically aggregates current subject performance using only the latest completed attempt per base course.",
             "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
         },
     },

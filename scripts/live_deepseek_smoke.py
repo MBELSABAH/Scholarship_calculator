@@ -1,4 +1,4 @@
-"""Run bounded live DeepSeek tool checks against sanitized demo academic data."""
+"""Run the model-first Academic Copilot demo conversation against demo data."""
 
 from __future__ import annotations
 
@@ -19,23 +19,19 @@ from backend.agent_service import (  # noqa: E402
 )
 
 
-LIVE_CASES = [
+LIVE_CASES: list[tuple[str, set[str] | None]] = [
+    ("What is my GPA?", None),
+    ("What are my top 3 courses?", {"get_course_extremes"}),
+    ("Which subject am I best at?", {"get_subject_performance"}),
+    ("Which am I better at, CS, MATH, or MCS?", {"get_subject_performance"}),
+    ("Why?", None),
     (
-        "Find scholarships I should apply for.",
-        ["get_student_summary", "search_upei_scholarships", "rank_scholarship_matches"],
+        "What are the courses hurting my academic performance most?",
+        {"get_course_extremes"},
     ),
-    ("What was my latest acquired scholarship?", ["get_scholarship_summary"]),
-    ("What are my lowest five grades?", ["get_academic_record"]),
-    (
-        "If I get 90 in four more 3-credit courses, what would my GPA be?",
-        ["project_gpa"],
-    ),
+    ("Did I improve over time?", {"get_academic_record", "get_scholarship_summary"}),
+    ("How many credits do I have left?", {"get_student_summary"}),
 ]
-
-
-def is_ordered_subsequence(expected: list[str], actual: list[str]) -> bool:
-    positions = iter(actual)
-    return all(any(tool == target for tool in positions) for target in expected)
 
 
 async def main() -> int:
@@ -45,18 +41,20 @@ async def main() -> int:
         print("DeepSeek is not configured. Set DEEPSEEK_API_KEY or create a local .env file.")
         return 2
 
-    for prompt, expected_tools in LIVE_CASES:
+    conversation_id = None
+    for prompt, useful_tools in LIVE_CASES:
         print(f"\nPrompt: {prompt}")
         try:
-            result = await service.chat(prompt, snapshot)
+            result = await service.chat(
+                prompt, snapshot, conversation_id=conversation_id
+            )
         except AgentConfigurationError as exc:
             print(str(exc))
             return 2
+        conversation_id = result.conversation_id
         print(f"DeepSeek -> {', '.join(result.tools_used) or 'no tool'}")
-        if is_ordered_subsequence(expected_tools, result.tools_used):
-            print("Python -> returned allow-listed structured data")
-        else:
-            print(f"FAILED: expected ordered tools {', '.join(expected_tools)}")
+        if useful_tools and not useful_tools.intersection(result.tools_used):
+            print(f"FAILED: expected one useful tool from {', '.join(sorted(useful_tools))}")
             return 1
         print("DeepSeek -> final answer")
         print(f"Final: {result.message}")
