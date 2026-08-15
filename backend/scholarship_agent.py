@@ -81,6 +81,7 @@ class ScholarshipSession:
         self.background = StudentBackgroundProfile()
         self.matches: list[ScholarshipMatch] = []
         self.applications: dict[str, ScholarshipApplicationState] = {}
+        self.pending_question: dict[str, Any] | None = None
         self._lock = Lock()
 
     def clear_student_state(self) -> None:
@@ -88,6 +89,7 @@ class ScholarshipSession:
             self.background = StudentBackgroundProfile()
             self.matches = []
             self.applications = {}
+            self.pending_question = None
         self.discovery.clear()
 
     def get_background(self) -> dict[str, Any]:
@@ -112,6 +114,105 @@ class ScholarshipSession:
                 updated = self._apply_background_to_application(application, field, normalised)
                 self.applications[application_id] = updated
         return {"saved": True, "field": field, "value": normalised}
+
+    def next_profile_question(self) -> dict[str, Any] | None:
+        """Store one high-impact, source-grounded scholarship question for deterministic follow-up."""
+        with self._lock:
+            if self.pending_question:
+                return dict(self.pending_question)
+            matches = list(self.matches)
+            background = self.background
+        candidates: dict[str, list[ScholarshipMatch]] = {"financial_need": [], "gender_identity_criterion": [], "pei_high_school_graduate": []}
+        for match in matches:
+            if match.match_level not in {"potential", "strong"}:
+                continue
+            text = match.scholarship.description
+            if match.scholarship.financial_need_required and background.financial_need is None:
+                candidates["financial_need"].append(match)
+            if re.search(r"\b(?:woman|women|female)\b", text, re.I) and background.gender_identity_criterion is None:
+                candidates["gender_identity_criterion"].append(match)
+            if re.search(r"\b(?:pei|prince edward island) high school\b", text, re.I) and background.pei_high_school_graduate is None:
+                candidates["pei_high_school_graduate"].append(match)
+        field = max(candidates, key=lambda key: len(candidates[key]))
+        affected = candidates[field]
+        if not affected:
+            return None
+        scholarship = affected[0].scholarship
+        source_text = scholarship.description
+        if field == "gender_identity_criterion":
+            requirement = next((line.strip() for line in re.split(r"(?<=[.!?])\s+", source_text) if re.search(r"\b(?:woman|women|female)\b", line, re.I)), "This award is restricted to female students.")
+            question = "This award is restricted to female students. Does that apply to you?"
+            choices = ["Yes", "No", "Prefer not to say"]
+        elif field == "financial_need":
+            requirement = "This award requires financial need."
+            question = "Does financial need apply to your situation?"
+            choices = ["Yes", "No", "Not sure"]
+        else:
+            requirement = "Applicant must have graduated from a Prince Edward Island high school."
+            question = "Did you graduate from a Prince Edward Island high school?"
+            choices = ["Yes", "No", "Not sure"]
+        pending = {
+            "field": field,
+            "criterion_label": field.replace("_", " "),
+            "scholarship_ids": [item.scholarship_id for item in affected],
+            "official_requirement_text": requirement,
+            "source_url": scholarship.source_url,
+            "required": True,
+            "expected_answer_type": "boolean",
+            "allowed_values": choices,
+            "question": question,
+        }
+        with self._lock:
+            self.pending_question = pending
+        return dict(pending)
+
+    def resolve_pending_question(self, message: str, snapshot: AcademicSnapshot) -> dict[str, Any] | None:
+        with self._lock:
+            pending = dict(self.pending_question) if self.pending_question else None
+        if not pending:
+            return None
+        lowered = message.strip().casefold()
+        field = pending["field"]
+        if field == "gender_identity_criterion" and re.search(r"which|what.*gender|specific gender", lowered):
+            return {"resolved": False, "message": "The award specifies female students.", "pending_question": pending}
+        if field == "financial_need" and re.search(r"what.*financial need|what.*mean", lowered):
+            return {"resolved": False, "message": "Here, financial need means the award requires you to confirm that financial circumstances make funding support relevant.", "pending_question": pending}
+        if field == "pei_high_school_graduate" and re.search(r"what.*count|what.*mean", lowered):
+            return {"resolved": False, "message": pending["official_requirement_text"], "pending_question": pending}
+        value: bool | None = None
+        if re.fullmatch(r"(?:yes|y|true)", lowered):
+            value = True
+        elif re.fullmatch(r"(?:no|n|false)", lowered):
+            value = False
+        elif field == "gender_identity_criterion":
+            if re.search(r"\b(?:male|man)\b", lowered):
+                value = False
+            elif re.search(r"\b(?:female|woman)\b", lowered):
+                value = True
+        if value is None:
+            return None
+        saved = self.save_background_answer(field, value, confirmed=True)
+        with self._lock:
+            self.pending_question = None
+        cached_search = getattr(self.discovery, "cached_search", None)
+        search = cached_search() if callable(cached_search) else None
+        if search is None:
+            with self._lock:
+                cached_matches = list(self.matches)
+            if cached_matches:
+                search = ScholarshipSearchResult(
+                    scholarships=[item.scholarship for item in cached_matches],
+                    source_mode="cached",
+                    sources=[],
+                )
+        matches = self.rank(search, snapshot) if search else []
+        selected = next((item for item in matches if item.scholarship_id in pending["scholarship_ids"]), None)
+        next_question = self.next_profile_question()
+        if selected and selected.match_level == "unlikely":
+            response = "That award requires a female student, so it is now an Unlikely Fit."
+        else:
+            response = "Your scholarship matches have been updated."
+        return {"resolved": True, "message": response, "saved": saved, "matches": [_model_dump(item) for item in matches], "pending_question": next_question}
 
     def search_and_rank(
         self,
@@ -160,6 +261,7 @@ class ScholarshipSession:
                     if value not in (None, [], "")
                 },
             },
+            "next_profile_question": self.next_profile_question(),
         }
 
     def rank(
@@ -357,15 +459,13 @@ class ScholarshipSession:
                 missing.append("A reference is required for the application.")
 
             if conflicts:
-                level = "not_eligible"
+                level = "unlikely"
             elif eligibility_unknown:
-                level = "needs_more_information"
-            elif len(known_matches) >= 3:
+                level = "potential"
+            elif known_matches:
                 level = "excellent"
-            elif len(known_matches) >= 1:
-                level = "good"
             else:
-                level = "possible"
+                level = "strong"
             known_count = len(known_matches) + len(conflicts)
             total_count = known_count + sum(
                 "required for the application" not in item for item in missing
@@ -385,10 +485,9 @@ class ScholarshipSession:
 
         order = {
             "excellent": 0,
-            "good": 1,
-            "possible": 2,
-            "needs_more_information": 3,
-            "not_eligible": 4,
+            "strong": 1,
+            "potential": 2,
+            "unlikely": 3,
         }
         results.sort(
             key=lambda match: (
@@ -414,7 +513,7 @@ class ScholarshipSession:
         return {
             "scholarship_id": scholarship.id,
             "scholarship": _model_dump(scholarship),
-            "match_level": "possible",
+            "match_level": "potential",
             "confidence": 0.2,
             "known_matches": [],
             "missing_information": ["Run scholarship matching against the connected profile."],

@@ -1465,6 +1465,30 @@ footer p {
   white-space: nowrap;
 }
 
+.copilot-modes {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 12px 0 8px;
+}
+
+.copilot-modes button {
+  padding: 6px 9px;
+  border: 1px solid #d4dfd8;
+  border-radius: 999px;
+  color: #65766e;
+  background: white;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.copilot-modes button.active {
+  border-color: var(--forest);
+  color: white;
+  background: var(--forest);
+}
+
 .copilot-panel .chat-messages {
   min-height: 0;
   max-height: none;
@@ -1698,9 +1722,9 @@ a.link-action {
 }
 
 .match-pill.excellent { color: #1b6349; background: #dcefe5; }
-.match-pill.good { color: #356050; background: #e9f1ec; }
-.match-pill.needs_more_information { color: #805d20; background: #f8eed8; }
-.match-pill.not_eligible { color: #8b3c34; background: #f8e7e5; }
+.match-pill.strong { color: #356050; background: #e9f1ec; }
+.match-pill.potential { color: #805d20; background: #f8eed8; }
+.match-pill.unlikely { color: #8b3c34; background: #f8e7e5; }
 
 .match-facts,
 .detail-columns ul {

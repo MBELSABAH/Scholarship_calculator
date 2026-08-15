@@ -42,7 +42,7 @@
               <p>Use the same details you use for the student portal.</p>
             </div>
 
-            <form id="connect-form" novalidate>
+            <form id="connect-form" method="post" novalidate>
               <label for="username">UPEI username</label>
               <div class="field-wrap">
                 <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="8" r="3.5"/><path d="M5.5 20a6.5 6.5 0 0 1 13 0"/></svg>
@@ -134,8 +134,9 @@
               <div id="scholarship-filters" class="match-filters" hidden aria-label="Scholarship match filters">
                 <button type="button" class="active" data-match-filter="all">All</button>
                 <button type="button" data-match-filter="excellent">Excellent</button>
-                <button type="button" data-match-filter="good">Good</button>
-                <button type="button" data-match-filter="needs_more_information">Needs information</button>
+                <button type="button" data-match-filter="strong">Strong</button>
+                <button type="button" data-match-filter="potential">Potential</button>
+                <button type="button" data-match-filter="unlikely">Unlikely</button>
               </div>
               <div id="scholarship-results" class="scholarship-results">
                 <div class="discovery-empty">
@@ -187,6 +188,10 @@
                 <h2 id="chat-title">Academic Copilot</h2>
               </div>
               <span class="copilot-live" aria-label="Copilot ready"></span>
+            </div>
+            <div class="copilot-modes" role="tablist" aria-label="Copilot mode">
+              <button type="button" class="active" data-chat-mode="scholarship" role="tab" aria-selected="true">Scholarships</button>
+              <button type="button" data-chat-mode="academic" role="tab" aria-selected="false">Academic Q&amp;A</button>
             </div>
             <div id="copilot-context" class="copilot-context">Dashboard overview</div>
             <div id="chat-messages" class="chat-messages" aria-live="polite">

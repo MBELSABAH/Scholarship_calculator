@@ -115,6 +115,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
             request.message,
             snapshot_store.get(),
             conversation_id=request.conversation_id,
+            mode=request.mode,
             ui_context={
                 "current_view": request.current_view,
                 "current_scholarship_id": request.current_scholarship_id,
@@ -130,6 +131,7 @@ async def chat(request: ChatRequest) -> ChatResponse:
         tools_used=result.tools_used,
         sources=result.sources,
         ui_updates=result.ui_updates,
+        pending_question=result.pending_question,
     )
 
 

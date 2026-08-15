@@ -194,16 +194,18 @@ class ConversationStore:
 
     def __init__(self, max_messages: int = MAX_HISTORY_MESSAGES) -> None:
         self._conversations: dict[str, list[dict[str, str]]] = {}
+        self._modes: dict[str, str] = {}
         self._max_messages = max_messages
         self._lock = Lock()
 
-    def open(self, requested_id: str | None = None) -> tuple[str, list[dict[str, str]]]:
+    def open(self, requested_id: str | None = None, *, mode: str) -> tuple[str, list[dict[str, str]]]:
         with self._lock:
-            if requested_id and requested_id in self._conversations:
+            if requested_id and requested_id in self._conversations and self._modes.get(requested_id) == mode:
                 conversation_id = requested_id
             else:
                 conversation_id = uuid4().hex
                 self._conversations[conversation_id] = []
+                self._modes[conversation_id] = mode
             return conversation_id, deepcopy(self._conversations[conversation_id])
 
     def append_turn(self, conversation_id: str, user: str, assistant: str) -> None:
@@ -220,6 +222,7 @@ class ConversationStore:
     def clear(self) -> None:
         with self._lock:
             self._conversations.clear()
+            self._modes.clear()
 
 
 @dataclass(frozen=True)
@@ -230,6 +233,7 @@ class AgentResult:
     suggested_replies: list[str]
     sources: list[dict[str, str]]
     ui_updates: list[str]
+    pending_question: dict[str, Any] | None = None
 
 
 def contextual_suggestions(question: str, tools_used: list[str]) -> list[str]:
@@ -292,6 +296,7 @@ class AgentService:
         snapshot: AcademicSnapshot | None,
         *,
         conversation_id: str | None = None,
+        mode: str = "academic",
         ui_context: dict[str, str | None] | None = None,
     ) -> AgentResult:
         if snapshot is None:
@@ -300,9 +305,24 @@ class AgentService:
         if not question:
             raise AgentServiceError("Enter a question for Academic Copilot.", http_status=422)
 
-        active_id, history = self.conversations.open(conversation_id)
+        active_id, history = self.conversations.open(conversation_id, mode=mode)
+        if mode == "scholarship":
+            pending_result = SCHOLARSHIP_SESSION.resolve_pending_question(question, snapshot)
+            if pending_result:
+                answer = pending_result["message"]
+                self.conversations.append_turn(active_id, question, answer)
+                return AgentResult(
+                    message=answer,
+                    conversation_id=active_id,
+                    tools_used=[],
+                    suggested_replies=(pending_result.get("pending_question") or {}).get("allowed_values", ["Show best match"]),
+                    sources=[],
+                    ui_updates=["refresh_scholarships"] if pending_result.get("resolved") else [],
+                    pending_question=pending_result.get("pending_question"),
+                )
         messages: list[dict[str, Any]] = [
             {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": "Conversation mode: scholarship. Keep scholarship workflow context active." if mode == "scholarship" else "Conversation mode: academic. Answer only academic-record questions; do not start scholarship workflows."},
         ]
         if ui_context:
             messages.append(
@@ -414,6 +434,7 @@ class AgentService:
                 suggested_replies=suggestions,
                 sources=sources,
                 ui_updates=self._ui_updates(tools_used),
+                pending_question=SCHOLARSHIP_SESSION.next_profile_question() if mode == "scholarship" and tools_used else None,
             )
 
         raise AgentRoundsExceededError()

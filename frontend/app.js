@@ -21,6 +21,7 @@ const scholarshipFilters = document.querySelector("#scholarship-filters");
 const scholarshipResults = document.querySelector("#scholarship-results");
 const scholarshipDetail = document.querySelector("#scholarship-detail");
 const applicationView = document.querySelector("#application-view");
+const chatModeButtons = [...document.querySelectorAll("[data-chat-mode]")];
 
 const initialChatSuggestions = [
   "Find scholarships I should apply for.",
@@ -28,6 +29,11 @@ const initialChatSuggestions = [
   "What are my lowest grades?",
 ];
 
+let activeChatMode = "scholarship";
+const chatModes = {
+  scholarship: { conversationId: null, html: "", inputDraft: "", suggestions: [], currentView: "scholarships", scholarshipId: null, applicationId: null, pendingQuestion: null },
+  academic: { conversationId: null, html: "", inputDraft: "", suggestions: [], currentView: "dashboard", scholarshipId: null, applicationId: null, pendingQuestion: null },
+};
 let conversationId = null;
 let chatRequestActive = false;
 let currentView = "dashboard";
@@ -36,6 +42,7 @@ let currentApplicationId = null;
 let scholarshipMatches = [];
 let activeMatchFilter = "all";
 let applicationStartActive = false;
+let currentSuggestions = [];
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
@@ -120,6 +127,7 @@ function setCopilotContext(view, scholarshipId = null, applicationId = null, lab
 }
 
 function renderChatSuggestions(suggestions) {
+  currentSuggestions = Array.isArray(suggestions) ? suggestions : [];
   chatSuggestions.replaceChildren();
   suggestions.slice(0, 3).forEach((suggestion) => {
     const button = document.createElement("button");
@@ -139,6 +147,42 @@ function renderChatSuggestions(suggestions) {
   });
 }
 
+function saveChatMode() {
+  const state = chatModes[activeChatMode];
+  state.conversationId = conversationId;
+  state.html = chatMessages.innerHTML;
+  state.inputDraft = chatInput.value;
+  state.suggestions = currentSuggestions;
+  state.currentView = currentView;
+  state.scholarshipId = currentScholarshipId;
+  state.applicationId = currentApplicationId;
+}
+
+function switchChatMode(mode) {
+  if (mode === activeChatMode) return;
+  saveChatMode();
+  activeChatMode = mode;
+  const state = chatModes[mode];
+  conversationId = state.conversationId;
+  currentView = state.currentView;
+  currentScholarshipId = state.scholarshipId;
+  currentApplicationId = state.applicationId;
+  chatMessages.innerHTML = state.html;
+  if (!state.html) showChatEmptyState();
+  chatInput.value = state.inputDraft;
+  renderChatSuggestions(state.suggestions.length ? state.suggestions : (mode === "scholarship" ? ["Find scholarships", "Show best match"] : ["What is my GPA?", "What are my lowest grades?"]));
+  chatModeButtons.forEach((button) => {
+    const selected = button.dataset.chatMode === mode;
+    button.classList.toggle("active", selected);
+    button.setAttribute("aria-selected", String(selected));
+  });
+  copilotContext.textContent = mode === "scholarship" ? "Scholarship workflow" : "Academic Q&A";
+}
+
+function activateScholarshipMode() {
+  if (activeChatMode !== "scholarship") switchChatMode("scholarship");
+}
+
 function showChatEmptyState() {
   const empty = document.createElement("div");
   empty.id = "chat-empty";
@@ -148,6 +192,9 @@ function showChatEmptyState() {
 }
 
 function resetChat() {
+  Object.assign(chatModes.scholarship, { conversationId: null, html: "", inputDraft: "", suggestions: [], currentView: "scholarships", scholarshipId: null, applicationId: null, pendingQuestion: null });
+  Object.assign(chatModes.academic, { conversationId: null, html: "", inputDraft: "", suggestions: [], currentView: "dashboard", scholarshipId: null, applicationId: null, pendingQuestion: null });
+  activeChatMode = "scholarship";
   conversationId = null;
   chatRequestActive = false;
   chatForm.reset();
@@ -155,7 +202,7 @@ function resetChat() {
   chatInput.disabled = false;
   chatSend.disabled = false;
   showChatEmptyState();
-  renderChatSuggestions(initialChatSuggestions);
+  renderChatSuggestions(["Find scholarships", "Show best match"]);
   setCopilotContext("dashboard");
 }
 
@@ -234,6 +281,7 @@ async function applyUiUpdates(updates) {
 async function sendChatMessage(rawMessage) {
   const message = String(rawMessage || "").trim();
   if (!message || chatRequestActive) return;
+  if (activeChatMode === "academic" && /\bfind\b.*\bscholarship/i.test(message)) activateScholarshipMode();
   addChatMessage("user", message);
   chatInput.value = "";
   chatSuggestions.replaceChildren();
@@ -241,6 +289,7 @@ async function sendChatMessage(rawMessage) {
   try {
     const payload = {
       message,
+      mode: activeChatMode,
       current_view: currentView,
       current_scholarship_id: currentScholarshipId,
       current_application_id: currentApplicationId,
@@ -253,6 +302,7 @@ async function sendChatMessage(rawMessage) {
     });
     addChatMessage("assistant", responseBody.message, false, responseBody.sources || []);
     conversationId = responseBody.conversation_id;
+    chatModes[activeChatMode].pendingQuestion = responseBody.pending_question || null;
     await applyUiUpdates(responseBody.ui_updates);
     renderChatSuggestions(Array.isArray(responseBody.suggested_replies) ? responseBody.suggested_replies : initialChatSuggestions.slice(0, 2));
   } catch (error) {
@@ -268,6 +318,8 @@ chatForm.addEventListener("submit", (event) => {
   event.preventDefault();
   sendChatMessage(chatInput.value);
 });
+
+chatModeButtons.forEach((button) => button.addEventListener("click", () => switchChatMode(button.dataset.chatMode)));
 
 function setupSpeechRecognition() {
   const Recognition = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -399,15 +451,28 @@ function summaryCards(snapshot) {
 
 function matchLabel(level) {
   return {
-    excellent: "Excellent match",
-    good: "Good match",
-    possible: "Possible match",
-    needs_more_information: "Needs information",
-    not_eligible: "Known conflict",
-  }[level] || "Possible match";
+    excellent: "Excellent Match",
+    strong: "Strong Match",
+    potential: "Potential Fit",
+    unlikely: "Unlikely Fit",
+  }[level] || "Potential Fit";
+}
+
+function updateScholarshipFilterCounts() {
+  const counts = { all: scholarshipMatches.length, excellent: 0, strong: 0, potential: 0, unlikely: 0 };
+  scholarshipMatches.forEach((match) => {
+    if (Object.hasOwn(counts, match.match_level)) counts[match.match_level] += 1;
+  });
+  scholarshipFilters.querySelectorAll("[data-match-filter]").forEach((button) => {
+    const level = button.dataset.matchFilter;
+    const label = { all: "All", excellent: "Excellent", strong: "Strong", potential: "Potential", unlikely: "Unlikely" }[level];
+    button.textContent = `${label} ${counts[level] || 0}`;
+    button.classList.toggle("active", level === activeMatchFilter);
+  });
 }
 
 function renderScholarshipMatches() {
+  updateScholarshipFilterCounts();
   const visible = activeMatchFilter === "all" ? scholarshipMatches : scholarshipMatches.filter((match) => match.match_level === activeMatchFilter);
   scholarshipFilters.hidden = scholarshipMatches.length === 0;
   if (!scholarshipMatches.length) {
@@ -415,7 +480,8 @@ function renderScholarshipMatches() {
     return;
   }
   if (!visible.length) {
-    scholarshipResults.innerHTML = '<div class="discovery-empty"><div><strong>No awards in this filter</strong><p>Try another match level.</p></div></div>';
+    const label = matchLabel(activeMatchFilter).replace(" Match", "");
+    scholarshipResults.innerHTML = `<div class="discovery-empty"><div><strong>No ${escapeHtml(label)} scholarships right now.</strong><p>Try another match level.</p></div></div>`;
     return;
   }
   scholarshipResults.innerHTML = visible.map((match) => {
@@ -461,6 +527,7 @@ function renderScholarshipMatches() {
 }
 
 async function runScholarshipSearch({ announceInChat = false } = {}) {
+  activateScholarshipMode();
   findScholarshipsButton.disabled = true;
   findScholarshipsButton.textContent = "Searching…";
   scholarshipResults.innerHTML = '<div class="discovery-empty"><span class="status-pulse"></span><div><strong>Searching official UPEI awards…</strong><p>Comparing published criteria with your connected academic profile.</p></div></div>';
@@ -481,7 +548,13 @@ async function runScholarshipSearch({ announceInChat = false } = {}) {
     }
     if (announceInChat) {
       addChatMessage("assistant", `I found and ranked ${scholarshipMatches.length} scholarship opportunities. Open one to review the official criteria and match explanation.`, false, body.sources || []);
-      renderChatSuggestions(["Show my best match", "Which need more information?"]);
+      if (body.next_profile_question?.question) {
+        addChatMessage("assistant", body.next_profile_question.question);
+        chatModes.scholarship.pendingQuestion = body.next_profile_question;
+        renderChatSuggestions(body.next_profile_question.allowed_values || ["Not sure"]);
+      } else {
+        renderChatSuggestions(["Show my best match", "Which potential fits need info?"]);
+      }
     }
   } catch (error) {
     scholarshipResults.innerHTML = `<div class="discovery-empty error"><div><strong>Scholarship search unavailable</strong><p>${escapeHtml(error.message)}</p></div></div>`;
@@ -574,6 +647,7 @@ function renderExternalApplication(state) {
 }
 
 async function startScholarshipApplication(scholarshipId, { officialPageOpened = false } = {}) {
+  activateScholarshipMode();
   if (applicationStartActive) return;
   if (currentApplicationId && currentScholarshipId === scholarshipId && !applicationView.hidden) {
     applicationView.scrollIntoView({ behavior: "smooth", block: "start" });

@@ -13,6 +13,7 @@ from backend.agent_service import (
     SCHOLARSHIP_AGENT_SYSTEM_PROMPT,
     SYSTEM_PROMPT,
     contextual_suggestions,
+    ConversationStore,
 )
 
 
@@ -160,6 +161,16 @@ class AcademicAgentServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertIn("exempt from the short-answer limit", ACADEMIC_COPILOT_SYSTEM_PROMPT)
         self.assertIn("Never fabricate criteria or a detail page", SCHOLARSHIP_AGENT_SYSTEM_PROMPT)
         self.assertIn(SCHOLARSHIP_AGENT_SYSTEM_PROMPT, SYSTEM_PROMPT)
+
+    def test_conversation_ids_are_mode_scoped(self):
+        store = ConversationStore()
+        scholarship_id, _ = store.open(mode="scholarship")
+        store.append_turn(scholarship_id, "Find scholarships", "Does financial need apply?")
+        academic_id, _ = store.open(scholarship_id, mode="academic")
+        self.assertNotEqual(scholarship_id, academic_id)
+        reopened_id, history = store.open(scholarship_id, mode="scholarship")
+        self.assertEqual(reopened_id, scholarship_id)
+        self.assertEqual(history[-1]["content"], "Does financial need apply?")
 
 
 if __name__ == "__main__":

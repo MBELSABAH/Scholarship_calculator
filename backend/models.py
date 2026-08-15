@@ -15,6 +15,7 @@ class ConnectRequest(BaseModel):
 
 class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=2000)
+    mode: Literal["scholarship", "academic"] = "academic"
     conversation_id: str | None = Field(default=None, max_length=100)
     current_view: Literal["dashboard", "scholarships", "scholarship_detail", "application"] = "dashboard"
     current_scholarship_id: str | None = Field(default=None, max_length=100)
@@ -33,6 +34,7 @@ class ChatResponse(BaseModel):
     tools_used: list[str]
     sources: list[ChatSource] = Field(default_factory=list)
     ui_updates: list[str] = Field(default_factory=list)
+    pending_question: dict | None = None
 
 
 class ScholarshipSearchRequest(BaseModel):

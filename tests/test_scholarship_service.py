@@ -271,7 +271,7 @@ class ScholarshipSessionTests(unittest.TestCase):
 
     def test_unknown_sensitive_criterion_is_not_treated_as_eligibility(self):
         match = self.session.rank(self.search, self.snapshot)[0]
-        self.assertEqual(match.match_level, "needs_more_information")
+        self.assertEqual(match.match_level, "potential")
         self.assertIn("Financial need status must be confirmed by the student.", match.missing_information)
         self.assertNotIn("Student confirmed that financial need applies.", match.known_matches)
 
@@ -279,6 +279,24 @@ class ScholarshipSessionTests(unittest.TestCase):
         match = self.session.rank(self.search, self.snapshot)[0]
         self.assertEqual(match.match_level, "excellent")
         self.assertIn("Student confirmed that financial need applies.", match.known_matches)
+
+    def test_gender_pending_question_keeps_official_context_and_resolves_male_answer(self):
+        scholarship = demo_scholarship(
+            financial_need_required=None,
+            personal_statement_required=False,
+            description="Awarded to a female student enrolled in Computer Science.",
+        )
+        search = ScholarshipSearchResult(scholarships=[scholarship], source_mode="demo_fallback", sources=[])
+        self.session.rank(search, self.snapshot)
+        pending = self.session.next_profile_question()
+        self.assertEqual(pending["field"], "gender_identity_criterion")
+        clarification = self.session.resolve_pending_question("which specific gender", self.snapshot)
+        self.assertFalse(clarification["resolved"])
+        self.assertEqual(clarification["message"], "The award specifies female students.")
+        resolved = self.session.resolve_pending_question("I am male", self.snapshot)
+        self.assertTrue(resolved["resolved"])
+        self.assertFalse(self.session.get_background()["gender_identity_criterion"])
+        self.assertIn("Unlikely Fit", resolved["message"])
 
     def test_background_confirmation_draft_review_and_submission_gate(self):
         state = self.session.open_application(self.scholarship.id, self.snapshot)
@@ -381,10 +399,10 @@ class ScholarshipSessionTests(unittest.TestCase):
 
         self.assertEqual(snapshot.student.year_of_study, 4)
         self.assertIn("fourth-year standing", " ".join(ranked["year-four"].known_matches).casefold())
-        self.assertEqual(ranked["year-one"].match_level, "not_eligible")
+        self.assertEqual(ranked["year-one"].match_level, "unlikely")
         self.assertIn("first year", " ".join(ranked["year-one"].known_conflicts).casefold())
         self.assertIn("upper-year", " ".join(ranked["upper-year"].known_matches).casefold())
-        self.assertEqual(ranked["entering-four"].match_level, "needs_more_information")
+        self.assertEqual(ranked["entering-four"].match_level, "potential")
 
     def test_search_and_rank_receives_calculated_year_and_academic_profile(self):
         record = load_demo_record()
