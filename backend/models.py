@@ -10,7 +10,6 @@ from pydantic import BaseModel, Field, SecretStr
 class ConnectRequest(BaseModel):
     username: str = ""
     password: SecretStr = Field(default_factory=lambda: SecretStr(""))
-    browser: Literal["chrome", "safari"] = "chrome"
     demo: bool = False
 
 

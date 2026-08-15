@@ -6,9 +6,12 @@ from copy import deepcopy
 
 from backend.academic_service import build_academic_snapshot, load_demo_record
 from backend.agent_service import (
+    ACADEMIC_COPILOT_SYSTEM_PROMPT,
     AgentRoundsExceededError,
     AgentService,
     NoAcademicSnapshotError,
+    SCHOLARSHIP_AGENT_SYSTEM_PROMPT,
+    SYSTEM_PROMPT,
     contextual_suggestions,
 )
 
@@ -150,6 +153,13 @@ class AcademicAgentServiceTests(unittest.IsolatedAsyncioTestCase):
         self.assertNotEqual(grades, projection)
         self.assertLessEqual(len(scholarship), 3)
         self.assertIn("Why do I qualify?", scholarship)
+
+    def test_system_prompts_require_brief_plain_normal_answers_but_allow_essays(self):
+        self.assertIn("one to three short sentences", ACADEMIC_COPILOT_SYSTEM_PROMPT)
+        self.assertIn("Do not use emojis", ACADEMIC_COPILOT_SYSTEM_PROMPT)
+        self.assertIn("exempt from the short-answer limit", ACADEMIC_COPILOT_SYSTEM_PROMPT)
+        self.assertIn("Never fabricate criteria or a detail page", SCHOLARSHIP_AGENT_SYSTEM_PROMPT)
+        self.assertIn(SCHOLARSHIP_AGENT_SYSTEM_PROMPT, SYSTEM_PROMPT)
 
 
 if __name__ == "__main__":

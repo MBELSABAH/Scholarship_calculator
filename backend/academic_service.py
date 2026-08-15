@@ -34,24 +34,19 @@ def run_academic_scrape(
     username: str,
     password: str,
     *,
-    browser: str = "chrome",
     progress_callback=None,
 ) -> dict[str, Any]:
-    """Call a browser scraper directly; credentials never enter argv or disk."""
+    """Call the Chrome scraper directly; credentials never enter argv or disk."""
     try:
-        if browser == "safari":
-            from grades_extractor_safari import scrape_academic_record
-        elif browser == "chrome":
-            from grades_extractor_chrome import scrape_academic_record
-        else:
-            raise AcademicScrapeError("Choose Chrome or Safari.")
+        from grades_extractor_chrome import scrape_academic_record
+
         return scrape_academic_record(username, password, progress_callback)
     except AcademicScrapeError:
         raise
     except Exception as exc:
         raise AcademicScrapeError(
             "We could not retrieve the academic record. Check the login details, "
-            "browser setup, and UPEI portal availability, then try again."
+            "Chrome setup, and UPEI portal availability, then try again."
         ) from exc
 
 

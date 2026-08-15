@@ -256,7 +256,7 @@ label,
   display: block;
   margin: 19px 0 8px;
   color: #2e3f38;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 750;
 }
 
@@ -304,31 +304,18 @@ label,
   stroke-linejoin: round;
 }
 
-.field-wrap input,
-.field-wrap select {
+.field-wrap input {
   width: 100%;
   height: 100%;
   border: 0;
   outline: 0;
   color: var(--ink);
   background: transparent;
-  font-size: 14px;
+  font-size: 15px;
 }
 
 .field-wrap input::placeholder {
   color: #a0aaa6;
-}
-
-.field-wrap select {
-  appearance: none;
-  cursor: pointer;
-}
-
-.select-wrap::after {
-  content: "⌄";
-  color: #77857f;
-  font-size: 18px;
-  transform: translateY(-2px);
 }
 
 .form-error {
@@ -359,7 +346,7 @@ label,
   color: white;
   background: var(--forest);
   box-shadow: 0 12px 25px rgba(18, 63, 50, 0.19);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 750;
   transition: transform 160ms ease, background 160ms ease, box-shadow 160ms ease;
 }
@@ -413,7 +400,7 @@ label,
   border-radius: 12px;
   color: var(--forest);
   background: #f8fbf8;
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 750;
   transition: background 160ms ease, border-color 160ms ease;
 }
@@ -434,7 +421,7 @@ label,
   align-items: flex-start;
   gap: 8px;
   color: #74817c;
-  font-size: 10.5px;
+  font-size: 11.5px;
   line-height: 1.5;
 }
 
@@ -569,7 +556,7 @@ label,
   border-radius: 999px;
   color: #50645b;
   background: rgba(255, 255, 255, 0.7);
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 750;
   letter-spacing: 0.04em;
   text-transform: uppercase;
@@ -579,7 +566,7 @@ label,
   padding: 7px 3px;
   color: var(--ink-soft);
   background: transparent;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 700;
 }
 
@@ -596,7 +583,7 @@ label,
   color: white;
   background: var(--forest);
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 13px;
+  font-size: 14px;
 }
 
 .dashboard-content {
@@ -623,7 +610,7 @@ label,
 .welcome-row p {
   margin: 10px 0 0;
   color: var(--ink-soft);
-  font-size: 15px;
+  font-size: 16px;
 }
 
 .record-meta {
@@ -632,14 +619,14 @@ label,
   justify-items: end;
   gap: 3px;
   color: #82908a;
-  font-size: 10px;
+  font-size: 11px;
   letter-spacing: 0.06em;
   text-transform: uppercase;
 }
 
 .record-meta strong {
   color: var(--ink);
-  font-size: 13px;
+  font-size: 14px;
   letter-spacing: 0.05em;
 }
 
@@ -684,7 +671,7 @@ label,
   align-items: center;
   justify-content: space-between;
   color: #71817a;
-  font-size: 10px;
+  font-size: 11px;
   font-weight: 800;
   letter-spacing: 0.12em;
   text-transform: uppercase;
@@ -714,7 +701,7 @@ label,
 .summary-value {
   margin-top: 25px;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 41px;
+  font-size: 43px;
   line-height: 1;
   letter-spacing: -0.035em;
 }
@@ -722,7 +709,7 @@ label,
 .summary-value.program-value {
   max-width: 220px;
   font-family: inherit;
-  font-size: 20px;
+  font-size: 21px;
   font-weight: 720;
   line-height: 1.25;
   letter-spacing: -0.025em;
@@ -731,7 +718,7 @@ label,
 .summary-caption {
   margin-top: 9px;
   color: #86928d;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.4;
 }
 
@@ -757,14 +744,14 @@ label,
 .chat-heading h2 {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 31px;
+  font-size: 33px;
   font-weight: 500;
   letter-spacing: -0.035em;
 }
 
 .chat-grounding {
   color: #7c8983;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .chat-panel {
@@ -791,7 +778,7 @@ label,
   justify-content: center;
   gap: 11px;
   color: #73827b;
-  font-size: 13px;
+  font-size: 14px;
   text-align: center;
 }
 
@@ -817,21 +804,50 @@ label,
 
 .chat-message-label {
   color: #7c8b84;
-  font-size: 9px;
+  font-size: 10px;
   font-weight: 800;
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
 .chat-bubble {
+  min-width: 0;
+  max-width: 100%;
   padding: 12px 15px;
   border: 1px solid #dfe7e2;
   border-radius: 5px 15px 15px 15px;
   color: #33463d;
   background: #f7faf8;
-  font-size: 13px;
+  font-size: 15px;
   line-height: 1.58;
+  overflow-wrap: break-word;
   white-space: pre-wrap;
+}
+
+.chat-message.assistant .chat-bubble {
+  white-space: normal;
+}
+
+.chat-markdown-heading {
+  margin: 0.3em 0 0.15em;
+  font-weight: 800;
+}
+
+.chat-markdown-heading:first-child {
+  margin-top: 0;
+}
+
+.chat-markdown-spacer {
+  height: 0.65em;
+}
+
+.chat-markdown-list {
+  margin: 0.3em 0;
+  padding-left: 1.25em;
+}
+
+.chat-markdown-list li + li {
+  margin-top: 0.18em;
 }
 
 .chat-message.user .chat-bubble {
@@ -854,7 +870,7 @@ label,
   align-items: center;
   gap: 9px;
   color: #64756d;
-  font-size: 11px;
+  font-size: 12px;
 }
 
 .status-pulse {
@@ -886,7 +902,7 @@ label,
   color: #345347;
   background: #f6faf7;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 700;
   transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
 }
@@ -928,7 +944,7 @@ label,
   outline: 0;
   color: var(--ink);
   background: transparent;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .chat-composer input::placeholder {
@@ -965,7 +981,7 @@ label,
 .chat-note {
   margin: 11px 2px 0;
   color: #8a9691;
-  font-size: 9.5px;
+  font-size: 11px;
   line-height: 1.5;
 }
 
@@ -983,7 +999,7 @@ label,
 .section-heading h2 {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 31px;
+  font-size: 33px;
   font-weight: 500;
   letter-spacing: -0.035em;
 }
@@ -1022,7 +1038,7 @@ label,
   align-items: center;
   justify-content: space-between;
   color: #617069;
-  font-size: 12px;
+  font-size: 13px;
   font-weight: 750;
 }
 
@@ -1031,7 +1047,7 @@ label,
   border-radius: 999px;
   color: var(--forest-light);
   background: var(--sage);
-  font-size: 8px;
+  font-size: 9px;
   font-weight: 850;
   letter-spacing: 0.08em;
   text-transform: uppercase;
@@ -1047,25 +1063,25 @@ label,
 
 .average-value {
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 32px;
+  font-size: 34px;
   letter-spacing: -0.035em;
 }
 
 .average-value span {
   color: #718079;
-  font-size: 16px;
+  font-size: 17px;
 }
 
 .award-value {
   color: var(--forest-light);
-  font-size: 18px;
+  font-size: 20px;
   font-weight: 800;
 }
 
 .scholarship-status {
   margin-top: 7px;
   color: #8a9691;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .courses-heading {
@@ -1074,7 +1090,7 @@ label,
 
 .section-hint {
   color: #7c8983;
-  font-size: 11px;
+  font-size: 13px;
 }
 
 .academic-years {
@@ -1112,14 +1128,14 @@ label,
 .academic-year-title strong {
   display: block;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 19px;
+  font-size: 21px;
   font-weight: 500;
 }
 
 .academic-year-title span,
 .year-metric span {
   color: #8a9691;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .year-metric {
@@ -1131,7 +1147,7 @@ label,
 
 .year-metric strong {
   color: #31443b;
-  font-size: 13px;
+  font-size: 15px;
 }
 
 .chevron {
@@ -1164,7 +1180,7 @@ label,
 .course-table th {
   color: #819089;
   background: #f8faf8;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 850;
   letter-spacing: 0.11em;
   text-transform: uppercase;
@@ -1173,12 +1189,14 @@ label,
 .course-table td {
   border-top: 1px solid #edf1ee;
   color: #586860;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .course-table td:nth-child(2) {
   width: 100%;
   color: var(--ink);
+  font-size: 15px;
+  overflow-wrap: break-word;
   white-space: normal;
 }
 
@@ -1201,7 +1219,7 @@ footer {
   justify-content: space-between;
   border-top: 1px solid var(--line);
   color: #88958f;
-  font-size: 10px;
+  font-size: 11px;
 }
 
 footer span {
@@ -1360,6 +1378,21 @@ footer p {
   min-width: 0;
 }
 
+.dashboard-layout > *,
+.summary-grid > *,
+.scholarship-grid > *,
+.scholarship-results > *,
+.welcome-row > *,
+.section-heading > *,
+.match-card-top > *,
+.match-card-footer > *,
+.detail-heading > *,
+.detail-meta > *,
+.detail-actions > *,
+.application-actions > * {
+  min-width: 0;
+}
+
 .copilot-panel {
   position: sticky;
   top: 90px;
@@ -1399,7 +1432,7 @@ footer p {
 .copilot-header h2 {
   margin: 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 25px;
+  font-size: 27px;
   font-weight: 500;
 }
 
@@ -1418,7 +1451,7 @@ footer p {
   border-radius: 9px;
   color: #52655c;
   background: #eef4f0;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -1450,8 +1483,9 @@ footer p {
 
 .chat-sources a {
   color: var(--forest-light);
-  font-size: 9.5px;
+  font-size: 11px;
   font-weight: 700;
+  overflow-wrap: anywhere;
   text-decoration: none;
 }
 
@@ -1494,7 +1528,7 @@ footer p {
   color: var(--forest);
   background: #f7faf8;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 13px;
   font-weight: 780;
 }
 
@@ -1517,6 +1551,14 @@ footer p {
   min-height: 32px;
   padding: 5px 11px;
   border-radius: 999px;
+}
+
+a.secondary-action,
+a.link-action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-decoration: none;
 }
 
 .discovery-section {
@@ -1542,7 +1584,7 @@ footer p {
   color: #65766e;
   background: white;
   cursor: pointer;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 750;
 }
 
@@ -1566,7 +1608,7 @@ footer p {
   border-radius: 9px;
   color: #7c5b22;
   background: var(--gold-soft);
-  font-size: 10px;
+  font-size: 12px;
   line-height: 1.5;
 }
 
@@ -1591,7 +1633,7 @@ footer p {
 
 .discovery-empty p {
   margin: 5px 0 0;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -1612,20 +1654,25 @@ footer p {
   align-items: flex-start;
 }
 
+.match-card-top > div {
+  min-width: 0;
+}
+
 .match-card h3,
 .scholarship-detail h3,
 .application-view h3 {
   margin: 8px 0 0;
   font-family: Georgia, "Times New Roman", serif;
-  font-size: 19px;
+  font-size: 21px;
   font-weight: 500;
   line-height: 1.22;
+  overflow-wrap: break-word;
 }
 
 .match-amount {
   flex: 0 0 auto;
   color: var(--forest-light);
-  font-size: 16px;
+  font-size: 18px;
 }
 
 .match-pill,
@@ -1635,7 +1682,7 @@ footer p {
   border-radius: 999px;
   color: #446257;
   background: #e7f0ea;
-  font-size: 8px;
+  font-size: 10px;
   font-weight: 850;
   letter-spacing: 0.07em;
   text-transform: uppercase;
@@ -1654,7 +1701,7 @@ footer p {
   gap: 7px;
   list-style: none;
   color: #62726b;
-  font-size: 10.5px;
+  font-size: 13px;
   line-height: 1.45;
 }
 
@@ -1663,10 +1710,11 @@ footer p {
 .match-conflict { color: #8b3c34; }
 
 .match-card-footer {
+  flex-wrap: wrap;
   padding-top: 13px;
   border-top: 1px solid #edf1ee;
   color: #829089;
-  font-size: 9.5px;
+  font-size: 11.5px;
 }
 
 .scholarship-detail,
@@ -1690,7 +1738,7 @@ footer p {
 
 .detail-description {
   color: #586961;
-  font-size: 12px;
+  font-size: 15px;
   line-height: 1.65;
 }
 
@@ -1709,24 +1757,32 @@ footer p {
 .detail-columns h4,
 .application-preview h4 {
   margin: 0;
-  font-size: 12px;
+  font-size: 13.5px;
 }
 
 .detail-meta {
   margin-top: 16px;
+  flex-wrap: wrap;
   color: #75847d;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .detail-meta a {
   color: var(--forest-light);
   font-weight: 750;
+  overflow-wrap: anywhere;
   text-decoration: none;
+}
+
+.official-source {
+  min-width: 0;
+  overflow-wrap: anywhere;
 }
 
 .detail-actions,
 .application-actions {
   margin-top: 20px;
+  flex-wrap: wrap;
   justify-content: flex-start;
 }
 
@@ -1739,7 +1795,7 @@ footer p {
   justify-content: center;
   gap: 10px;
   color: #6b7a73;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .application-status {
@@ -1774,7 +1830,7 @@ footer p {
 
 .application-field-label span {
   color: #85928c;
-  font-size: 8px;
+  font-size: 10px;
   text-transform: uppercase;
 }
 
@@ -1789,7 +1845,7 @@ footer p {
   outline: 0;
   color: var(--ink);
   background: #fbfcfb;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 .application-field textarea {
@@ -1812,7 +1868,7 @@ footer p {
   justify-content: space-between;
   gap: 12px;
   color: #798780;
-  font-size: 9.5px;
+  font-size: 11.5px;
 }
 
 .essay-controls label {
@@ -1821,7 +1877,7 @@ footer p {
   align-items: center;
   gap: 6px;
   color: #506159;
-  font-size: 9.5px;
+  font-size: 11.5px;
 }
 
 .save-field-button {
@@ -1837,7 +1893,7 @@ footer p {
   border-radius: 12px;
   color: #755822;
   background: #fbf5e9;
-  font-size: 11px;
+  font-size: 13px;
   line-height: 1.5;
 }
 
@@ -1854,7 +1910,7 @@ footer p {
 .application-boundary {
   margin: 14px 0 0;
   color: #85918c;
-  font-size: 9.5px;
+  font-size: 11.5px;
   line-height: 1.5;
 }
 
@@ -1863,6 +1919,8 @@ footer p {
   .dashboard-layout { grid-template-columns: minmax(0, 1fr) minmax(340px, 380px); }
   .summary-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
   .scholarship-results { grid-template-columns: 1fr; }
+  .course-table th,
+  .course-table td { padding-inline: 14px; }
 }
 
 @media (max-width: 1120px) {
@@ -1879,7 +1937,7 @@ footer p {
 @media (max-width: 640px) {
   .dashboard-content { width: min(100% - 30px, 520px); }
   .discovery-section { padding: 20px 15px; }
-  .section-heading { align-items: flex-start; }
+  .section-heading { align-items: flex-start; flex-wrap: wrap; }
   .detail-columns { grid-template-columns: 1fr; }
   .detail-heading,
   .application-heading,
@@ -1900,7 +1958,7 @@ footer p {
   border-radius: 11px;
   color: #697871;
   background: rgba(255, 255, 255, 0.62);
-  font-size: 9.5px;
+  font-size: 11px;
 }
 
 .performance-legend-title {
@@ -1923,59 +1981,59 @@ footer p {
   border-radius: 50%;
 }
 
-.legend-swatch.excellent { background: #3f78ae; }
-.legend-swatch.strong { background: #3b8062; }
-.legend-swatch.good { background: #a6781d; }
-.legend-swatch.needs-improvement { background: #bd6a2d; }
-.legend-swatch.low { background: #ad4a45; }
+.legend-swatch.excellent { background: #2f75b9; }
+.legend-swatch.strong { background: #2f8a61; }
+.legend-swatch.good { background: #b88613; }
+.legend-swatch.needs-improvement { background: #d07022; }
+.legend-swatch.low { background: #c54b4b; }
 .legend-swatch.neutral { background: #7c8883; }
 
 .academic-year.performance-excellent,
 .course-row.performance-excellent {
-  --performance-accent: #3f78ae;
-  --performance-ink: #285d8d;
-  --performance-tint: rgba(63, 120, 174, 0.065);
-  --performance-badge: #e3eef8;
+  --performance-accent: #2f75b9;
+  --performance-ink: #185c99;
+  --performance-tint: rgba(47, 117, 185, 0.14);
+  --performance-badge: #cfe3f6;
 }
 
 .academic-year.performance-strong,
 .course-row.performance-strong {
-  --performance-accent: #3b8062;
-  --performance-ink: #286348;
-  --performance-tint: rgba(59, 128, 98, 0.065);
-  --performance-badge: #e4f1ea;
+  --performance-accent: #2f8a61;
+  --performance-ink: #1f6947;
+  --performance-tint: rgba(47, 138, 97, 0.14);
+  --performance-badge: #d1eadc;
 }
 
 .academic-year.performance-good,
 .course-row.performance-good {
-  --performance-accent: #a6781d;
-  --performance-ink: #79560f;
-  --performance-tint: rgba(166, 120, 29, 0.07);
-  --performance-badge: #f7edcf;
+  --performance-accent: #b88613;
+  --performance-ink: #78570b;
+  --performance-tint: rgba(184, 134, 19, 0.15);
+  --performance-badge: #f4df9f;
 }
 
 .academic-year.performance-needs_improvement,
 .course-row.performance-needs_improvement {
-  --performance-accent: #bd6a2d;
-  --performance-ink: #8f4a18;
-  --performance-tint: rgba(189, 106, 45, 0.065);
-  --performance-badge: #f9e8da;
+  --performance-accent: #d07022;
+  --performance-ink: #8e4610;
+  --performance-tint: rgba(208, 112, 34, 0.145);
+  --performance-badge: #f6d3b2;
 }
 
 .academic-year.performance-low,
 .course-row.performance-low {
-  --performance-accent: #ad4a45;
-  --performance-ink: #843833;
-  --performance-tint: rgba(173, 74, 69, 0.06);
-  --performance-badge: #f8e5e3;
+  --performance-accent: #c54b4b;
+  --performance-ink: #8c2f33;
+  --performance-tint: rgba(197, 75, 75, 0.135);
+  --performance-badge: #f4caca;
 }
 
 .academic-year.performance-neutral,
 .course-row.performance-neutral {
   --performance-accent: #7c8883;
   --performance-ink: #57635e;
-  --performance-tint: rgba(124, 136, 131, 0.055);
-  --performance-badge: #ecefed;
+  --performance-tint: rgba(124, 136, 131, 0.085);
+  --performance-badge: #e5e9e7;
 }
 
 .academic-year > summary {
@@ -1984,7 +2042,7 @@ footer p {
   grid-template-columns: minmax(150px, 1fr) auto auto 24px;
   grid-template-rows: auto auto;
   gap: 12px 24px;
-  box-shadow: inset 4px 0 0 var(--performance-accent);
+  box-shadow: inset 5px 0 0 var(--performance-accent);
   background: linear-gradient(90deg, var(--performance-tint), rgba(255, 255, 255, 0.28) 44%);
 }
 
@@ -2012,19 +2070,19 @@ footer p {
   gap: 7px;
   border: 1px solid transparent;
   border-radius: 8px;
-  font-size: 9px;
+  font-size: 11px;
   font-weight: 720;
 }
 
 .year-stat-chip strong {
-  font-size: 10px;
+  font-size: 12px;
 }
 
-.year-stat-chip.excellent { color: #285d8d; border-color: #c9dceb; background: #edf5fb; }
-.year-stat-chip.strong { color: #286348; border-color: #cde1d5; background: #edf6f1; }
-.year-stat-chip.good { color: #79560f; border-color: #e8d8ad; background: #fbf5e5; }
-.year-stat-chip.needs_improvement { color: #8f4a18; border-color: #edcfb8; background: #fcf1e9; }
-.year-stat-chip.low { color: #843833; border-color: #e8c8c5; background: #fcf0ef; }
+.year-stat-chip.excellent { color: #185c99; border-color: #a9cce9; background: #dcecf9; }
+.year-stat-chip.strong { color: #1f6947; border-color: #a9d5be; background: #dcefe4; }
+.year-stat-chip.good { color: #78570b; border-color: #dfc36f; background: #f8eabe; }
+.year-stat-chip.needs_improvement { color: #8e4610; border-color: #e7b888; background: #f9dfc6; }
+.year-stat-chip.low { color: #8c2f33; border-color: #e2aaaa; background: #f8dddd; }
 
 .course-row td {
   background: var(--performance-tint);
@@ -2032,7 +2090,7 @@ footer p {
 }
 
 .course-row td:first-child {
-  box-shadow: inset 4px 0 0 var(--performance-accent);
+  box-shadow: inset 5px 0 0 var(--performance-accent);
 }
 
 .course-row:hover td {
@@ -2042,7 +2100,7 @@ footer p {
 .course-row .grade-pill {
   color: var(--performance-ink);
   background: var(--performance-badge);
-  outline: 1px solid color-mix(in srgb, var(--performance-accent) 24%, transparent);
+  outline: 1px solid color-mix(in srgb, var(--performance-accent) 42%, transparent);
 }
 
 @media (max-width: 640px) {

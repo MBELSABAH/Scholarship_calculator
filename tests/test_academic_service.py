@@ -1,11 +1,14 @@
 from __future__ import annotations
 
 import unittest
+from types import SimpleNamespace
+from unittest.mock import Mock, patch
 
 from backend.academic_service import (
     build_academic_snapshot,
     classify_performance_band,
     load_demo_record,
+    run_academic_scrape,
 )
 from backend.models import ConnectRequest
 
@@ -94,6 +97,23 @@ class AcademicServiceTests(unittest.TestCase):
 
         self.assertNotIn("do-not-log-this", repr(request))
         self.assertEqual(request.password.get_secret_value(), "do-not-log-this")
+
+    def test_web_connect_contract_has_no_browser_choice(self):
+        model_fields = getattr(ConnectRequest, "model_fields", None)
+        if model_fields is None:
+            model_fields = ConnectRequest.__fields__
+
+        self.assertNotIn("browser", model_fields)
+
+    def test_web_academic_scrape_always_invokes_chrome(self):
+        scraper = Mock(return_value={"student": {}, "courses": []})
+        chrome_module = SimpleNamespace(scrape_academic_record=scraper)
+
+        with patch.dict("sys.modules", {"grades_extractor_chrome": chrome_module}):
+            result = run_academic_scrape("student", "secret")
+
+        self.assertEqual(result, {"student": {}, "courses": []})
+        scraper.assert_called_once_with("student", "secret", None)
 
     def test_latest_acquired_ignores_newer_empty_year(self):
         snapshot = build_academic_snapshot(

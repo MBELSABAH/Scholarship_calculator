@@ -111,10 +111,38 @@ class ScholarshipDiscoveryTests(unittest.TestCase):
         self.assertEqual(first.source_mode, "live")
         self.assertEqual(second.source_mode, "cached")
         self.assertEqual(first.scholarships[0].id, "1144")
+        self.assertEqual(first.scholarships[0].detail_status, "extracted")
+        self.assertEqual(first.scholarships[0].source_url, detail_url)
         self.assertEqual(first.scholarships[0].minimum_average, 80)
         self.assertTrue(first.scholarships[0].financial_need_required)
         self.assertEqual(web.calls.count(DIRECTORY_URL), 1)
         self.assertEqual(web.calls.count(detail_url), 1)
+
+    def test_unextractable_detail_preserves_specific_official_source(self):
+        detail_url = "https://www.upei.ca/scholarships-and-awards/display?awardid=2048"
+        directory_html = """
+        <div class="scholarshipcompletelist"><div class="views-row">
+          <div class="scholarshipname"><a href="/scholarships-and-awards/display?awardid=2048">Source Only Award</a></div>
+          <div class="scholarshipdescription">Details are published on the official award page.</div>
+          <div class="valuemaxamount">$1,500</div>
+        </div></div>
+        """
+        unextractable_html = "<main><p>The page layout is not machine extractable.</p></main>"
+        service = ScholarshipDiscoveryService(
+            web_client=FakeWebClient(
+                {DIRECTORY_URL: directory_html, detail_url: unextractable_html}
+            )
+        )
+
+        scholarship = service.search().scholarships[0]
+
+        self.assertEqual(scholarship.detail_status, "source_only")
+        self.assertEqual(scholarship.source_url, detail_url)
+        self.assertEqual(
+            scholarship.source_title,
+            "UPEI Scholarships & Awards — Source Only Award",
+        )
+        self.assertIsNone(scholarship.application_url)
 
     def test_form_parser_normalises_application_fields_and_ignores_login(self):
         html = """

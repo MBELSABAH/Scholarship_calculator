@@ -80,7 +80,6 @@ async def connect(request: ConnectRequest) -> AcademicSnapshot:
             run_academic_scrape,
             username,
             password,
-            browser=request.browser,
         )
         snapshot = build_academic_snapshot(scraped_record, source="live")
     except AcademicScrapeError as exc:

@@ -32,6 +32,7 @@ class ScholarshipRecord(BaseModel):
     application_url: str | None = None
     source_url: str
     source_title: str
+    detail_status: Literal["extracted", "source_only"] = "extracted"
     is_demo: bool = False
 
 

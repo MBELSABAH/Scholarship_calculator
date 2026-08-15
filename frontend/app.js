@@ -39,6 +39,7 @@ let activeMatchFilter = "all";
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
 }[character]));
+const renderSafeBasicMarkdown = window.AcademicCopilotChatFormat.renderSafeBasicMarkdown;
 
 const formatNumber = (value, digits = 0) => value === null || value === undefined ? "—" : Number(value).toLocaleString("en-CA", {
   minimumFractionDigits: digits,
@@ -142,7 +143,12 @@ function addChatMessage(role, message, isError = false, sources = []) {
   label.textContent = role === "user" ? "You" : "Academic Copilot";
   const bubble = document.createElement("div");
   bubble.className = "chat-bubble";
-  bubble.textContent = message;
+  if (role === "assistant" && !isError) {
+    // The formatter escapes model text before adding a tiny allow-listed Markdown subset.
+    bubble.innerHTML = renderSafeBasicMarkdown(message);
+  } else {
+    bubble.textContent = message;
+  }
   row.append(label, bubble);
   const validSources = sources.map((source) => ({ ...source, safeUrl: officialSourceUrl(source.url) })).filter((source) => source.safeUrl);
   if (validSources.length) {
@@ -329,10 +335,10 @@ connectForm.addEventListener("submit", (event) => {
     return;
   }
   passwordInput.value = "";
-  requestSnapshot({ username, password, browser: document.querySelector("#browser").value, demo: false });
+  requestSnapshot({ username, password, demo: false });
 });
 
-demoButton.addEventListener("click", () => requestSnapshot({ username: "", password: "", browser: "chrome", demo: true }));
+demoButton.addEventListener("click", () => requestSnapshot({ username: "", password: "", demo: true }));
 
 disconnectButton.addEventListener("click", async () => {
   try {
@@ -388,6 +394,10 @@ function renderScholarshipMatches() {
   }
   scholarshipResults.innerHTML = visible.map((match) => {
     const scholarship = match.scholarship;
+    const source = officialSourceUrl(scholarship.source_url);
+    const viewAction = scholarship.detail_status === "source_only" && source
+      ? `<a class="link-action" href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer" aria-label="View ${escapeHtml(scholarship.name)} on the official UPEI page">View</a>`
+      : `<button type="button" class="link-action" data-view-scholarship="${escapeHtml(match.scholarship_id)}">View</button>`;
     const facts = [
       ...match.known_matches.slice(0, 2).map((item) => `<li class="match-known">✓ ${escapeHtml(item)}</li>`),
       ...match.missing_information.slice(0, 2).map((item) => `<li class="match-missing">? ${escapeHtml(item)}</li>`),
@@ -402,7 +412,7 @@ function renderScholarshipMatches() {
         <ul class="match-facts">${facts || "<li>Official criteria available in the detail view.</li>"}</ul>
         <div class="match-card-footer">
           <span>${scholarship.deadline ? `Deadline: ${escapeHtml(scholarship.deadline)}` : "Deadline not listed"}</span>
-          <button type="button" class="link-action" data-view-scholarship="${escapeHtml(match.scholarship_id)}">View</button>
+          ${viewAction}
         </div>
       </article>`;
   }).join("");
@@ -459,6 +469,11 @@ async function openScholarshipDetail(scholarshipId) {
     currentApplicationId = null;
     setCopilotContext("scholarship_detail", scholarshipId, null, scholarship.name);
     const source = officialSourceUrl(scholarship.source_url);
+    if (scholarship.detail_status === "source_only") {
+      if (source) window.open(source, "_blank", "noopener,noreferrer");
+      return;
+    }
+    const sourceTitle = scholarship.source_title || "Official UPEI source";
     scholarshipDetail.innerHTML = `
       <div class="detail-heading">
         <div><span class="match-pill ${escapeHtml(match.match_level)}">${escapeHtml(matchLabel(match.match_level))}</span><h3>${escapeHtml(scholarship.name)}</h3></div>
@@ -471,11 +486,12 @@ async function openScholarshipDetail(scholarshipId) {
       </div>
       <div class="detail-meta">
         <span>${scholarship.deadline ? `Deadline: ${escapeHtml(scholarship.deadline)}` : "Deadline not listed"}</span>
-        ${source ? `<a href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">${escapeHtml(scholarship.source_title || "Official UPEI source")} ↗</a>` : ""}
+        ${source ? `<span class="official-source">Official source: <a href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceTitle)}</a></span>` : ""}
       </div>
       <div class="detail-actions">
         <button type="button" class="primary-inline" id="help-apply-button">Help me apply</button>
         <button type="button" class="secondary-action" id="why-match-button">Why am I a match?</button>
+        ${source ? `<a class="secondary-action official-page-action" href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">Open official page ↗</a>` : ""}
       </div>`;
     scholarshipDetail.hidden = false;
     applicationView.hidden = true;

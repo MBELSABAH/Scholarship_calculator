@@ -232,7 +232,10 @@ class ScholarshipDiscoveryService:
             html = self.web_client.fetch_html(fallback["source_url"])
             record = self.parse_detail_html(html, fallback["source_url"], fallback=fallback)
         except ScholarshipResearchError:
-            record = self._record_from_fields(fallback, fallback["source_url"])
+            record = self._record_from_fields(
+                {**fallback, "detail_status": "source_only"},
+                fallback["source_url"],
+            )
         with self._lock:
             self._details[scholarship_id] = record
         return record
@@ -302,6 +305,7 @@ class ScholarshipDiscoveryService:
         combined = {**fallback, **fields}
         combined["name"] = _clean_text(heading.get_text(" ", strip=True)) if heading else fallback.get("name")
         combined["application_url"] = links.get("Application Form")
+        combined["detail_status"] = "extracted"
         return cls._record_from_fields(combined, source_url)
 
     @staticmethod
@@ -399,6 +403,7 @@ class ScholarshipDiscoveryService:
             application_url=str(application_url) if application_url else None,
             source_url=source_url,
             source_title=str(fields.get("source_title") or f"UPEI Scholarships & Awards — {name}"),
+            detail_status=str(fields.get("detail_status") or "extracted"),
         )
 
     @staticmethod
