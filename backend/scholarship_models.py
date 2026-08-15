@@ -102,9 +102,13 @@ class ScholarshipMatch(BaseModel):
     scholarship_id: str
     scholarship: ScholarshipRecord
     match_level: Literal[
-        "excellent", "good", "possible", "needs_more_information", "not_eligible"
+        "excellent", "strong", "potential", "unlikely"
     ]
     confidence: float
+    matched_required: int = 0
+    unknown_required: int = 0
+    conflicting_required: int = 0
+    matched_preferences: int = 0
     known_matches: list[str] = Field(default_factory=list)
     missing_information: list[str] = Field(default_factory=list)
     known_conflicts: list[str] = Field(default_factory=list)
