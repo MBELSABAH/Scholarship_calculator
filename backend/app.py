@@ -189,6 +189,7 @@ def save_student_background(request: BackgroundAnswerRequest) -> dict:
         raise HTTPException(status_code=422, detail=str(exc)) from None
 
 
+@app.post("/api/scholarships/{scholarship_id}/apply")
 @app.post("/api/scholarships/{scholarship_id}/applications")
 async def open_application(scholarship_id: str) -> dict:
     snapshot = _connected_snapshot()

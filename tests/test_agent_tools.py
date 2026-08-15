@@ -26,6 +26,11 @@ class AcademicAgentToolTests(unittest.TestCase):
         self.assertEqual(result["minors"], ["Business"])
         self.assertEqual(result["cumulative_gpa"], 4.094)
         self.assertEqual(result["total_credit_hours"], 54)
+        self.assertEqual(result["completed_credits"], 54)
+        self.assertEqual(result["required_degree_credits"], 120)
+        self.assertEqual(result["year_of_study"], 2)
+        self.assertEqual(result["academic_progress"]["year_of_study"], 2)
+        self.assertEqual(result["display_name"], "Maya")
         self.assertNotIn("student_id_masked", result)
 
     def test_get_scholarship_summary_preserves_deterministic_values(self):

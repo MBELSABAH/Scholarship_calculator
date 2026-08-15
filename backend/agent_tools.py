@@ -328,6 +328,8 @@ def get_student_summary(
     student = snapshot.student
     return {
         "name": student.name,
+        "full_name": student.full_name,
+        "display_name": student.display_name,
         "university": student.university,
         "faculty": student.faculty,
         "majors": list(student.majors),
@@ -335,6 +337,9 @@ def get_student_summary(
         "year_of_study": student.year_of_study,
         "cumulative_gpa": student.cumulative_gpa,
         "total_credit_hours": student.total_credit_hours,
+        "completed_credits": student.completed_credits,
+        "required_degree_credits": student.required_degree_credits,
+        "academic_progress": _model_dump(snapshot.academic_progress),
     }
 
 
@@ -524,7 +529,15 @@ def search_upei_scholarships(
         keyword=arguments.get("keyword"),
         refresh=refresh,
     )
-    return _model_dump(result)
+    payload = _model_dump(result)
+    payload["filters_used"] = {
+        "faculty": arguments.get("faculty") or snapshot.student.faculty,
+        "major": arguments.get("major")
+        or (snapshot.student.majors[0] if snapshot.student.majors else None),
+        "year_of_study": year or snapshot.student.year_of_study,
+    }
+    payload["academic_progress"] = _model_dump(snapshot.academic_progress)
+    return payload
 
 
 def rank_scholarship_matches(
@@ -540,6 +553,18 @@ def rank_scholarship_matches(
         "sources": [_model_dump(source) for source in search.sources],
         "source_mode": search.source_mode,
         "warning": search.warning,
+        "student_profile_used": {
+            "faculty": snapshot.student.faculty,
+            "majors": list(snapshot.student.majors),
+            "year_of_study": snapshot.student.year_of_study,
+            "completed_credits": snapshot.student.completed_credits,
+            "cumulative_gpa": snapshot.student.cumulative_gpa,
+            "confirmed_background": {
+                key: value
+                for key, value in SCHOLARSHIP_SESSION.get_background().items()
+                if value not in (None, [], "")
+            },
+        },
     }
 
 

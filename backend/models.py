@@ -97,6 +97,8 @@ class AcademicYear(BaseModel):
 
 class StudentSummary(BaseModel):
     name: str
+    full_name: str
+    display_name: str
     student_id_masked: str
     university: str = "UPEI"
     faculty: str | None = None
@@ -105,6 +107,16 @@ class StudentSummary(BaseModel):
     year_of_study: int | None = None
     cumulative_gpa: float | None
     total_credit_hours: float
+    completed_credits: float
+    required_degree_credits: float
+
+
+class AcademicProgress(BaseModel):
+    completed_credits: float
+    required_degree_credits: float
+    credits_per_year: float
+    completed_year_equivalents: float
+    year_of_study: int
 
 
 class ScholarshipYearSummary(BaseModel):
@@ -136,4 +148,5 @@ class AcademicSnapshot(BaseModel):
     student: StudentSummary
     academic_years: list[AcademicYear]
     scholarship_summary: ScholarshipSummary
+    academic_progress: AcademicProgress
     degree_progress: DegreeProgress

@@ -35,11 +35,13 @@ let currentScholarshipId = null;
 let currentApplicationId = null;
 let scholarshipMatches = [];
 let activeMatchFilter = "all";
+let applicationStartActive = false;
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
 }[character]));
 const renderSafeBasicMarkdown = window.AcademicCopilotChatFormat.renderSafeBasicMarkdown;
+const salutationForHour = window.AcademicCopilotGreeting.salutationForHour;
 
 const formatNumber = (value, digits = 0) => value === null || value === undefined ? "—" : Number(value).toLocaleString("en-CA", {
   minimumFractionDigits: digits,
@@ -51,6 +53,12 @@ const formatCurrency = (value) => value === null || value === undefined ? "—" 
 });
 
 const formatYear = (year) => escapeHtml(String(year).replace("-", "–"));
+const formatOrdinal = (value) => {
+  const number = Number(value);
+  const mod100 = number % 100;
+  const suffix = mod100 >= 11 && mod100 <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[number % 10] || "th");
+  return `${number}${suffix}`;
+};
 
 const performanceMeta = {
   excellent: { label: "Excellent", range: "90–100" },
@@ -109,7 +117,14 @@ function renderChatSuggestions(suggestions) {
     button.className = "suggestion-chip";
     button.textContent = suggestion;
     button.disabled = chatRequestActive;
-    button.addEventListener("click", () => sendChatMessage(suggestion));
+    button.addEventListener("click", () => {
+      const normalized = suggestion.trim().replace(/[.!?]+$/, "").toLowerCase();
+      if ((normalized === "help me apply" || normalized === "apply") && currentScholarshipId) {
+        startScholarshipApplication(currentScholarshipId);
+        return;
+      }
+      sendChatMessage(suggestion);
+    });
     chatSuggestions.append(button);
   });
 }
@@ -359,7 +374,8 @@ function summaryCards(snapshot) {
   const program = student.majors.length ? student.majors.join(" + ") : "Program unavailable";
   return [
     { label: "Cumulative GPA", icon: "↗", value: formatNumber(student.cumulative_gpa, 3), caption: "Calculated from your highest course attempts", className: "featured" },
-    { label: "Completed credits", icon: "◎", value: formatNumber(student.total_credit_hours), caption: "Credit hours included by the calculator", className: "" },
+    { label: "Completed credits", icon: "◎", value: formatNumber(student.completed_credits), caption: `${formatNumber(student.completed_credits)} of ${formatNumber(student.required_degree_credits)} credits completed`, className: "" },
+    { label: "Year of study", icon: "◷", value: `${formatOrdinal(student.year_of_study)} year`, caption: "Calculated from completed degree credits", className: "year" },
     {
       label: "Latest scholarship",
       icon: "✦",
@@ -398,6 +414,13 @@ function renderScholarshipMatches() {
     const viewAction = scholarship.detail_status === "source_only" && source
       ? `<a class="link-action" href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer" aria-label="View ${escapeHtml(scholarship.name)} on the official UPEI page">View</a>`
       : `<button type="button" class="link-action" data-view-scholarship="${escapeHtml(match.scholarship_id)}">View</button>`;
+    const directApplyDestination = officialSourceUrl(
+      scholarship.application_url
+      || (scholarship.detail_status === "source_only" ? scholarship.source_url : null),
+    );
+    const applyAction = directApplyDestination
+      ? `<a class="primary-inline compact-action" data-apply-scholarship="${escapeHtml(match.scholarship_id)}" href="${escapeHtml(directApplyDestination)}" target="_blank" rel="noopener noreferrer">Apply</a>`
+      : `<button type="button" class="primary-inline compact-action" data-apply-scholarship="${escapeHtml(match.scholarship_id)}">Apply</button>`;
     const facts = [
       ...match.known_matches.slice(0, 2).map((item) => `<li class="match-known">✓ ${escapeHtml(item)}</li>`),
       ...match.missing_information.slice(0, 2).map((item) => `<li class="match-missing">? ${escapeHtml(item)}</li>`),
@@ -412,12 +435,18 @@ function renderScholarshipMatches() {
         <ul class="match-facts">${facts || "<li>Official criteria available in the detail view.</li>"}</ul>
         <div class="match-card-footer">
           <span>${scholarship.deadline ? `Deadline: ${escapeHtml(scholarship.deadline)}` : "Deadline not listed"}</span>
-          ${viewAction}
+          <span class="match-card-actions">${viewAction}${applyAction}</span>
         </div>
       </article>`;
   }).join("");
   scholarshipResults.querySelectorAll("[data-view-scholarship]").forEach((button) => {
     button.addEventListener("click", () => openScholarshipDetail(button.dataset.viewScholarship));
+  });
+  scholarshipResults.querySelectorAll("[data-apply-scholarship]").forEach((button) => {
+    button.addEventListener("click", () => startScholarshipApplication(
+      button.dataset.applyScholarship,
+      { officialPageOpened: button.tagName === "A" },
+    ));
   });
 }
 
@@ -489,13 +518,13 @@ async function openScholarshipDetail(scholarshipId) {
         ${source ? `<span class="official-source">Official source: <a href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">${escapeHtml(sourceTitle)}</a></span>` : ""}
       </div>
       <div class="detail-actions">
-        <button type="button" class="primary-inline" id="help-apply-button">Help me apply</button>
+        <button type="button" class="primary-inline" id="help-apply-button" data-apply-scholarship="${escapeHtml(scholarshipId)}">Apply</button>
         <button type="button" class="secondary-action" id="why-match-button">Why am I a match?</button>
         ${source ? `<a class="secondary-action official-page-action" href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">Open official page ↗</a>` : ""}
       </div>`;
     scholarshipDetail.hidden = false;
     applicationView.hidden = true;
-    scholarshipDetail.querySelector("#help-apply-button").addEventListener("click", () => openApplication(scholarshipId));
+    scholarshipDetail.querySelector("#help-apply-button").addEventListener("click", () => startScholarshipApplication(scholarshipId));
     scholarshipDetail.querySelector("#why-match-button").addEventListener("click", () => sendChatMessage("Why am I a match for this scholarship?"));
     renderChatSuggestions(["Why am I a match?", "Help me apply"]);
     scholarshipDetail.scrollIntoView({ behavior: "smooth", block: "start" });
@@ -504,18 +533,84 @@ async function openScholarshipDetail(scholarshipId) {
   }
 }
 
-async function openApplication(scholarshipId) {
+function setApplicationButtonState(scholarshipId, label, disabled) {
+  document.querySelectorAll("[data-apply-scholarship]").forEach((button) => {
+    if (button.dataset.applyScholarship !== scholarshipId) return;
+    button.disabled = disabled;
+    button.classList.toggle("application-action-disabled", disabled);
+    if (disabled) button.setAttribute("aria-disabled", "true");
+    else button.removeAttribute("aria-disabled");
+    button.textContent = label;
+  });
+}
+
+function cachedScholarship(scholarshipId) {
+  return scholarshipMatches.find((match) => match.scholarship_id === scholarshipId)?.scholarship || null;
+}
+
+function renderExternalApplication(state) {
+  const destination = officialSourceUrl(state.destination_url);
+  const actionLabel = state.next_action === "open_official_application" ? "Open official application ↗" : "Open official scholarship page ↗";
+  applicationView.innerHTML = `
+    <div class="application-heading">
+      <div><span class="eyebrow">Official application</span><h3>${escapeHtml(state.scholarship_name)}</h3></div>
+      <span class="application-status">Official UPEI page</span>
+    </div>
+    <div class="external-application-notice">
+      <strong>${escapeHtml(state.status_message)}</strong>
+      <p>The scholarship remains selected here, so you can ask the copilot about any question on the official page.</p>
+      ${destination ? `<a class="primary-inline" href="${escapeHtml(destination)}" target="_blank" rel="noopener noreferrer">${actionLabel}</a>` : ""}
+    </div>`;
+}
+
+async function startScholarshipApplication(scholarshipId, { officialPageOpened = false } = {}) {
+  if (applicationStartActive) return;
+  if (currentApplicationId && currentScholarshipId === scholarshipId && !applicationView.hidden) {
+    applicationView.scrollIntoView({ behavior: "smooth", block: "start" });
+    return;
+  }
+  applicationStartActive = true;
+  const scholarship = cachedScholarship(scholarshipId);
+  const immediateDestination = officialSourceUrl(
+    scholarship?.application_url
+    || (scholarship?.detail_status === "source_only" ? scholarship.source_url : null),
+  );
+  if (immediateDestination && !officialPageOpened) window.open(immediateDestination, "_blank", "noopener,noreferrer");
+  setApplicationButtonState(scholarshipId, "Starting application…", true);
   applicationView.hidden = false;
   applicationView.innerHTML = '<div class="application-loading"><span class="status-pulse"></span> Inspecting official application requirements…</div>';
+  setCopilotContext("application", scholarshipId, null, scholarship?.name ? `Application · ${scholarship.name}` : "Scholarship application");
   try {
-    const state = await apiRequest(`/api/scholarships/${encodeURIComponent(scholarshipId)}/applications`, { method: "POST" });
+    const state = await apiRequest(`/api/scholarships/${encodeURIComponent(scholarshipId)}/apply`, { method: "POST" });
     currentApplicationId = state.application_id;
     setCopilotContext("application", scholarshipId, state.application_id, `Application · ${state.scholarship_name}`);
-    renderApplication(state);
-    renderChatSuggestions(state.pending_background_field ? ["What should I answer next?", "Review the requirements"] : ["Help with my personal statement", "Review application"]);
+    if (state.next_action === "guided_application") {
+      renderApplication(state);
+      const question = state.next_question
+        ? `${state.next_question.charAt(0).toLowerCase()}${state.next_question.slice(1)}`
+        : null;
+      addChatMessage("assistant", question ? `This application needs one detail from you: ${question}${/[?!.]$/.test(question) ? "" : "?"}` : state.status_message);
+      renderChatSuggestions(state.next_question ? ["What should I answer next?", "Review the requirements"] : ["Help with my personal statement", "Review application"]);
+      setApplicationButtonState(scholarshipId, "Application started", false);
+    } else {
+      const destination = officialSourceUrl(state.destination_url);
+      if (destination && destination !== immediateDestination) window.open(destination, "_blank", "noopener,noreferrer");
+      renderExternalApplication(state);
+      addChatMessage("assistant", state.status_message);
+      renderChatSuggestions(["What should I put here?", "Explain the requirements"]);
+      const completedLabel = state.next_action === "open_official_application"
+        ? "Open official application"
+        : destination ? "Open official page" : "Application unavailable";
+      setApplicationButtonState(scholarshipId, completedLabel, false);
+    }
     applicationView.scrollIntoView({ behavior: "smooth", block: "start" });
   } catch (error) {
     applicationView.innerHTML = `<div class="application-error">${escapeHtml(error.message)}</div>`;
+    setCopilotContext("scholarship_detail", scholarshipId, null, scholarship?.name || "Selected scholarship");
+    setApplicationButtonState(scholarshipId, "Apply", false);
+    addChatMessage("assistant", error.message, true);
+  } finally {
+    applicationStartActive = false;
   }
 }
 
@@ -548,6 +643,7 @@ function renderApplication(state) {
       <div><span class="eyebrow">Guided application</span><h3 id="application-title">${escapeHtml(state.scholarship_name)}</h3></div>
       <span class="application-status">${escapeHtml(state.inspection_status.replaceAll("_", " "))}</span>
     </div>
+    ${state.next_question ? `<div class="application-next-question"><span>Next question</span><strong>${escapeHtml(state.next_question)}</strong></div>` : ""}
     ${state.fields.length ? `<div class="application-fields">${fieldRows}</div>` : '<div class="application-empty">No machine-readable application fields were available. Review the official award page before proceeding.</div>'}
     <div id="application-preview" class="application-preview" hidden></div>
     <div class="application-actions">
@@ -627,9 +723,10 @@ async function approveAndSubmit(applicationId) {
 
 function renderDashboard(snapshot) {
   const { student, scholarship_summary: scholarship, academic_years: years } = snapshot;
-  const firstName = student.name.trim().split(/\s+/)[0] || "Student";
-  const initials = student.name.trim().split(/\s+/).slice(0, 2).map((part) => part[0]).join("").toUpperCase();
-  document.querySelector("#first-name").textContent = firstName;
+  const displayName = student.display_name || "Student";
+  const initials = displayName.slice(0, 1).toUpperCase() + (student.full_name || student.name || "").replace(/^.*?,\s*/, "").split(/\s+/).slice(-1)[0].slice(0, 1).toUpperCase();
+  document.querySelector("#greeting-salutation").textContent = salutationForHour(new Date().getHours());
+  document.querySelector("#first-name").textContent = displayName;
   document.querySelector("#masked-id").textContent = student.student_id_masked;
   document.querySelector("#avatar").textContent = initials || "AC";
   document.querySelector("#source-badge").textContent = snapshot.source === "demo" ? "Demo data" : "Live record";
@@ -642,7 +739,7 @@ function renderDashboard(snapshot) {
   document.querySelector("#summary-grid").innerHTML = summaryCards(snapshot).map((card) => `
     <article class="summary-card ${card.className === "featured" ? "featured" : ""}">
       <div class="summary-label"><span>${escapeHtml(card.label)}</span><span class="summary-icon" aria-hidden="true">${card.icon}</span></div>
-      <div class="summary-value ${card.className === "program" ? "program-value" : ""}">${escapeHtml(card.value)}</div>
+      <div class="summary-value ${card.className === "program" ? "program-value" : card.className === "year" ? "year-value" : ""}">${escapeHtml(card.value)}</div>
       <div class="summary-caption">${escapeHtml(card.caption)}</div>
     </article>`).join("");
 

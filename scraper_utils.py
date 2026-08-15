@@ -35,6 +35,8 @@ def parse_progress_text(text: str) -> dict[str, Any]:
         "majors": [],
         "minors": [],
         "year_of_study": None,
+        "completed_credits": None,
+        "required_degree_credits": None,
     }
 
     gpa_match = re.search(r"Cumulative GPA:\s*([0-9.]+)", text, re.IGNORECASE)
@@ -70,6 +72,40 @@ def parse_progress_text(text: str) -> dict[str, Any]:
     )
     if year_match:
         result["year_of_study"] = int(year_match.group(1))
+
+    combined_credit_match = re.search(
+        r"(?:Credits?|Credit Hours?)\s*(?:Completed|Earned)?\s*:?\s*"
+        r"([0-9]+(?:\.[0-9]+)?)\s*(?:of|/)\s*([0-9]+(?:\.[0-9]+)?)",
+        text,
+        re.IGNORECASE,
+    ) or re.search(
+        r"([0-9]+(?:\.[0-9]+)?)\s*(?:of|/)\s*([0-9]+(?:\.[0-9]+)?)"
+        r"\s*(?:Credits?|Credit Hours?)",
+        text,
+        re.IGNORECASE,
+    )
+    if combined_credit_match:
+        result["completed_credits"] = float(combined_credit_match.group(1))
+        result["required_degree_credits"] = float(combined_credit_match.group(2))
+
+    completed_patterns = (
+        r"(?:Completed|Earned)\s+Credits?\s*:\s*([0-9]+(?:\.[0-9]+)?)",
+        r"Credits?\s+(?:Completed|Earned)\s*:\s*([0-9]+(?:\.[0-9]+)?)",
+    )
+    required_patterns = (
+        r"(?:Required|Total)\s+(?:Degree\s+)?Credits?\s*:\s*([0-9]+(?:\.[0-9]+)?)",
+        r"Credits?\s+Required\s*:\s*([0-9]+(?:\.[0-9]+)?)",
+    )
+    for pattern in completed_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match and result["completed_credits"] is None:
+            result["completed_credits"] = float(match.group(1))
+            break
+    for pattern in required_patterns:
+        match = re.search(pattern, text, re.IGNORECASE)
+        if match and result["required_degree_credits"] is None:
+            result["required_degree_credits"] = float(match.group(1))
+            break
     return result
 
 

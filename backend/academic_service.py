@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import math
 import re
 from pathlib import Path
 from typing import Any
@@ -12,6 +13,7 @@ from Mark import Mark
 from Student import Student
 from backend.models import (
     AcademicSnapshot,
+    AcademicProgress,
     AcademicYear,
     AcademicYearStatistics,
     CourseRecord,
@@ -24,6 +26,8 @@ from backend.models import (
 
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 DEMO_RECORD_PATH = PROJECT_ROOT / "demo_data" / "academic_record.json"
+DEFAULT_REQUIRED_DEGREE_CREDITS = 120.0
+DEFAULT_PROGRAM_DURATION_YEARS = 4
 
 
 class AcademicScrapeError(RuntimeError):
@@ -63,6 +67,76 @@ def _mark_from_grade(raw_grade: Any) -> Mark:
 def _mask_student_id(student_id: Any) -> str:
     compact = re.sub(r"\s+", "", str(student_id or ""))
     return f"••••{compact[-3:]}" if compact else "Not available"
+
+
+def derive_display_name(full_name: Any) -> str:
+    """Return the student's given name from common portal name formats."""
+    normalized = " ".join(str(full_name or "").split())
+    if not normalized:
+        return "Student"
+    given_name_source = normalized.split(",", 1)[1] if "," in normalized else normalized
+    tokens = re.findall(r"[A-Za-zÀ-ÖØ-öø-ÿ'’-]+", given_name_source)
+    return tokens[0] if tokens else "Student"
+
+
+def _positive_number(value: Any) -> float | None:
+    if isinstance(value, bool):
+        return None
+    try:
+        number = float(value)
+    except (TypeError, ValueError):
+        return None
+    return number if number > 0 else None
+
+
+def calculate_completed_credits(raw_courses: list[dict[str, Any]]) -> float:
+    """Count completed, passed courses once without changing GPA calculations."""
+    completed_by_course: dict[str, tuple[float, float]] = {}
+    for course in raw_courses:
+        credits = _positive_number(course.get("credits"))
+        if credits is None:
+            continue
+        grade_text = str(course.get("grade") or "").strip().upper()
+        if grade_text == "P":
+            comparable_grade = 101.0
+        else:
+            try:
+                comparable_grade = float(grade_text)
+            except ValueError:
+                continue
+            if comparable_grade < 50:
+                continue
+        code = str(course.get("code") or "UNKNOWN")
+        base_code = "-".join(code.split("-")[:2]).upper()
+        previous = completed_by_course.get(base_code)
+        if previous is None or comparable_grade > previous[0]:
+            completed_by_course[base_code] = (comparable_grade, credits)
+    return sum(credits for _, credits in completed_by_course.values())
+
+
+def calculate_academic_progress(
+    completed_credits: float,
+    required_degree_credits: float = DEFAULT_REQUIRED_DEGREE_CREDITS,
+    *,
+    program_duration_years: int = DEFAULT_PROGRAM_DURATION_YEARS,
+) -> AcademicProgress:
+    """Derive standing from credits using one deterministic four-year rule."""
+    required = _positive_number(required_degree_credits) or DEFAULT_REQUIRED_DEGREE_CREDITS
+    duration = program_duration_years if program_duration_years > 0 else 4
+    completed = max(0.0, float(completed_credits))
+    credits_per_year = required / duration
+    equivalents = completed / credits_per_year
+    if completed >= required:
+        year = duration
+    else:
+        year = min(duration, math.floor(equivalents) + 1)
+    return AcademicProgress(
+        completed_credits=completed,
+        required_degree_credits=required,
+        credits_per_year=credits_per_year,
+        completed_year_equivalents=round(equivalents, 4),
+        year_of_study=year,
+    )
 
 
 def _parse_gpa_result(result: str) -> tuple[float | None, float]:
@@ -204,6 +278,20 @@ def build_academic_snapshot(
     cumulative_gpa, total_credit_hours = _parse_gpa_result(
         courses_engine.calculate_cumulative_gpa()
     )
+    scraped_completed_credits = _positive_number(profile.get("completed_credits"))
+    completed_credits = (
+        scraped_completed_credits
+        if scraped_completed_credits is not None
+        else calculate_completed_credits(raw_courses)
+    )
+    required_degree_credits = (
+        _positive_number(profile.get("required_degree_credits"))
+        or _positive_number(profile.get("degree_required_credits"))
+        or DEFAULT_REQUIRED_DEGREE_CREDITS
+    )
+    academic_progress = calculate_academic_progress(
+        completed_credits, required_degree_credits
+    )
     academic_years: list[AcademicYear] = []
     scholarship_years: list[ScholarshipYearSummary] = []
 
@@ -264,21 +352,22 @@ def build_academic_snapshot(
         None,
     )
     snapshot_source = "demo" if source == "demo" else "live"
+    full_name = str(profile.get("name") or "Student")
     return AcademicSnapshot(
         source=snapshot_source,
         student=StudentSummary(
-            name=str(profile.get("name") or "Student"),
+            name=full_name,
+            full_name=full_name,
+            display_name=derive_display_name(full_name),
             student_id_masked=_mask_student_id(profile.get("student_id")),
             faculty=str(profile.get("faculty") or "").strip() or None,
             majors=majors,
             minors=minors,
-            year_of_study=(
-                int(profile["year_of_study"])
-                if str(profile.get("year_of_study") or "").isdigit()
-                else None
-            ),
+            year_of_study=academic_progress.year_of_study,
             cumulative_gpa=cumulative_gpa,
             total_credit_hours=total_credit_hours,
+            completed_credits=completed_credits,
+            required_degree_credits=required_degree_credits,
         ),
         academic_years=academic_years,
         scholarship_summary=ScholarshipSummary(
@@ -290,9 +379,12 @@ def build_academic_snapshot(
             eligible_years=sum(year.status == "eligible" for year in scholarship_years),
             years=scholarship_years,
         ),
+        academic_progress=academic_progress,
         degree_progress=DegreeProgress(
-            credits_completed=total_credit_hours,
-            message="Detailed MyProgress requirements are reserved for Phase 4.",
+            status="partial",
+            credits_required=required_degree_credits,
+            credits_completed=completed_credits,
+            message="Credit progress is available; detailed requirement groups are not yet imported.",
         ),
     )
 

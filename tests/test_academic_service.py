@@ -6,7 +6,9 @@ from unittest.mock import Mock, patch
 
 from backend.academic_service import (
     build_academic_snapshot,
+    calculate_academic_progress,
     classify_performance_band,
+    derive_display_name,
     load_demo_record,
     run_academic_scrape,
 )
@@ -43,6 +45,63 @@ def scholarship_fixture(year_grades, declared_years):
 
 
 class AcademicServiceTests(unittest.TestCase):
+    def test_portal_name_formats_produce_clean_display_names(self):
+        cases = {
+            "Elsabah, Mohamed B.": "Mohamed",
+            "Chen, Maya": "Maya",
+            "Maya Chen": "Maya",
+            "Mohamed": "Mohamed",
+            "  Elsabah,   Mohamed B.  ": "Mohamed",
+        }
+        for full_name, expected in cases.items():
+            with self.subTest(full_name=full_name):
+                self.assertEqual(derive_display_name(full_name), expected)
+
+    def test_year_of_study_boundaries_use_completed_credits(self):
+        expected_years = {
+            29: 1,
+            30: 2,
+            59: 2,
+            60: 3,
+            89: 3,
+            90: 4,
+            102: 4,
+            120: 4,
+            150: 4,
+        }
+        for credits, expected in expected_years.items():
+            with self.subTest(credits=credits):
+                progress = calculate_academic_progress(credits, 120)
+                self.assertEqual(progress.year_of_study, expected)
+
+        progress = calculate_academic_progress(102, 120)
+        self.assertEqual(progress.credits_per_year, 30)
+        self.assertEqual(progress.completed_year_equivalents, 3.4)
+
+    def test_snapshot_keeps_full_name_and_exposes_calculated_progress(self):
+        snapshot = build_academic_snapshot(
+            {
+                "student": {
+                    "name": "Elsabah, Mohamed B.",
+                    "student_id": "1234567",
+                    "faculty": "SMCS",
+                    "majors": ["Computer Science"],
+                    "minors": [],
+                    "completed_credits": 102,
+                    "required_degree_credits": 120,
+                    "year_of_study": 1,
+                },
+                "courses": [],
+            }
+        )
+
+        self.assertEqual(snapshot.student.full_name, "Elsabah, Mohamed B.")
+        self.assertEqual(snapshot.student.display_name, "Mohamed")
+        self.assertEqual(snapshot.student.completed_credits, 102)
+        self.assertEqual(snapshot.student.year_of_study, 4)
+        self.assertEqual(snapshot.academic_progress.year_of_study, 4)
+        self.assertEqual(snapshot.academic_progress.completed_year_equivalents, 3.4)
+
     def test_demo_snapshot_uses_existing_calculators(self):
         snapshot = build_academic_snapshot(load_demo_record(), source="demo")
 

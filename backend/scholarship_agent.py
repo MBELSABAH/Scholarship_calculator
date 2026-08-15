@@ -45,6 +45,34 @@ def _model_dump(model: Any) -> dict[str, Any]:
     return model.model_dump() if hasattr(model, "model_dump") else model.dict()
 
 
+YEAR_WORDS = {1: "first", 2: "second", 3: "third", 4: "fourth"}
+
+
+def _ordinal_word(year: int) -> str:
+    return YEAR_WORDS.get(year, f"year {year}")
+
+
+def _year_numbers(labels: list[str]) -> set[int]:
+    numbers: set[int] = set()
+    for label in labels:
+        folded = label.casefold()
+        for year, word in YEAR_WORDS.items():
+            if re.search(rf"\b(?:{year}(?:st|nd|rd|th)|{word})\b", folded):
+                numbers.add(year)
+    return numbers
+
+
+def _faculty_matches(student_faculty: str, published_faculty: str) -> bool:
+    aliases = {
+        "smcs": "school of mathematical and computational sciences",
+    }
+    student = aliases.get(student_faculty.strip().casefold(), student_faculty.casefold())
+    published = aliases.get(
+        published_faculty.strip().casefold(), published_faculty.casefold()
+    )
+    return bool(student and (student in published or published in student))
+
+
 class ScholarshipSession:
     def __init__(self, discovery: ScholarshipDiscoveryService | None = None) -> None:
         self.discovery = discovery or ScholarshipDiscoveryService()
@@ -94,6 +122,15 @@ class ScholarshipSession:
         refresh: bool = False,
     ) -> dict[str, Any]:
         student = snapshot.student
+        latest_average = next(
+            (
+                year.weighted_average
+                for year in reversed(snapshot.scholarship_summary.years)
+                if year.calculation_status == "calculated"
+                and year.weighted_average is not None
+            ),
+            None,
+        )
         search = self.discovery.search(
             faculty=faculty or student.faculty,
             major=major or (student.majors[0] if student.majors else None),
@@ -107,6 +144,20 @@ class ScholarshipSession:
             "source_mode": search.source_mode,
             "warning": search.warning,
             "sources": [_model_dump(source) for source in search.sources],
+            "student_profile_used": {
+                "faculty": student.faculty,
+                "major": student.majors[0] if student.majors else None,
+                "year_of_study": student.year_of_study,
+                "completed_credits": student.completed_credits,
+                "required_degree_credits": student.required_degree_credits,
+                "cumulative_gpa": student.cumulative_gpa,
+                "latest_calculated_average": latest_average,
+                "confirmed_background": {
+                    key: value
+                    for key, value in self.get_background().items()
+                    if value not in (None, [], "")
+                },
+            },
         }
 
     def rank(
@@ -137,20 +188,28 @@ class ScholarshipSession:
                 accepted = {major.casefold() for major in scholarship.major}
                 overlap = accepted & (student_majors | student_minors)
                 if overlap:
-                    known_matches.append(f"Program matches: {', '.join(sorted(overlap)).title()}")
+                    known_matches.append(
+                        f"{', '.join(sorted(overlap)).title()} major or minor matches the published program requirement."
+                    )
                 else:
                     conflicts.append("The listed program requirement does not match the connected major or minor.")
-            elif scholarship.faculty:
+            if scholarship.faculty:
                 faculty_terms = {faculty.casefold() for faculty in scholarship.faculty}
                 is_open_faculty = any("all facult" in term for term in faculty_terms)
                 if is_open_faculty:
                     known_matches.append("The award is listed for all faculties.")
-                elif any(term in student_faculty or student_faculty in term for term in faculty_terms if student_faculty):
-                    known_matches.append("Faculty or school matches the connected record.")
+                elif any(
+                    _faculty_matches(student_faculty, term)
+                    for term in faculty_terms
+                    if student_faculty
+                ):
+                    known_matches.append(
+                        f"{snapshot.student.faculty} faculty or school matches the published requirement."
+                    )
                 else:
                     missing.append("The published faculty wording needs confirmation against the connected school.")
                     eligibility_unknown = True
-            else:
+            elif not scholarship.major:
                 known_matches.append("Open program criteria; no conflicting major was found.")
 
             if scholarship.minimum_average is not None:
@@ -174,12 +233,37 @@ class ScholarshipSession:
                     missing.append("Year of study is required but unavailable in the connected profile.")
                     eligibility_unknown = True
                 else:
-                    year_pattern = re.compile(rf"\b{student_year}(?:st|nd|rd|th)\b")
-                    year_matches = any(year_pattern.search(label.casefold()) for label in scholarship.year_of_study)
-                    if year_matches:
-                        known_matches.append(f"Year of study matches year {student_year}.")
+                    year_text = " ".join(scholarship.year_of_study).casefold()
+                    explicit_years = _year_numbers(scholarship.year_of_study)
+                    if "entering" in year_text:
+                        expected = " or ".join(
+                            f"{_ordinal_word(year)} year"
+                            for year in sorted(explicit_years)
+                        ) or "the listed"
+                        missing.append(
+                            f"The award uses entering-year wording ({expected}); confirm when that standing is measured."
+                        )
+                        eligibility_unknown = True
+                    elif re.search(r"\bupper[- ]year\b", year_text):
+                        if student_year >= 2:
+                            known_matches.append(
+                                f"Calculated {_ordinal_word(student_year)}-year standing satisfies the published upper-year requirement."
+                            )
+                        else:
+                            conflicts.append(
+                                "The award is restricted to upper-year students; calculated standing is first year."
+                            )
+                    elif student_year in explicit_years:
+                        known_matches.append(
+                            f"Calculated {_ordinal_word(student_year)}-year standing matches the published year requirement."
+                        )
                     else:
-                        conflicts.append(f"The published year-of-study requirement does not include year {student_year}.")
+                        required = " or ".join(
+                            f"{_ordinal_word(year)} year" for year in sorted(explicit_years)
+                        ) or "a different year of study"
+                        conflicts.append(
+                            f"The award is restricted to {required}; calculated standing is {_ordinal_word(student_year)} year."
+                        )
 
             if scholarship.financial_need_required:
                 if background.financial_need is None:
@@ -339,13 +423,17 @@ class ScholarshipSession:
         self, scholarship_id: str, snapshot: AcademicSnapshot
     ) -> ScholarshipApplicationState:
         scholarship = self.discovery.inspect(scholarship_id)
-        inspection_status, raw_fields = self.discovery.inspect_application_fields(scholarship)
+        if scholarship.detail_status == "source_only":
+            inspection_status, raw_fields = "unavailable", []
+        else:
+            inspection_status, raw_fields = self.discovery.inspect_application_fields(scholarship)
         academic_known = {
-            "name": snapshot.student.name,
+            "name": snapshot.student.full_name,
             "major": ", ".join(snapshot.student.majors),
             "minor": ", ".join(snapshot.student.minors),
             "cumulative_gpa": snapshot.student.cumulative_gpa,
-            "completed_credits": snapshot.student.total_credit_hours,
+            "completed_credits": snapshot.student.completed_credits,
+            "year_of_study": snapshot.student.year_of_study,
         }
         fields = [ApplicationField(**field) for field in raw_fields]
         with self._lock:
@@ -357,12 +445,36 @@ class ScholarshipSession:
                 field.source = "student" if field.field_id in BACKGROUND_FIELDS else "academic_snapshot"
         missing = [field.field_id for field in fields if field.required and field.known_answer in (None, "")]
         pending = next((field.field_id for field in fields if field.field_id in BACKGROUND_FIELDS and field.field_id in missing), None)
+        next_missing = next(
+            (field for field in fields if field.required and field.known_answer in (None, "")),
+            None,
+        )
+        if fields and inspection_status in {"official_form", "criteria_based_preview"}:
+            next_action = "guided_application"
+            destination_url = None
+            status_message = "Application started. Review the known fields and complete one missing detail at a time."
+        elif scholarship.application_url:
+            next_action = "open_official_application"
+            destination_url = scholarship.application_url
+            status_message = "The official application is open. I can help you answer its questions."
+        elif scholarship.source_url:
+            next_action = "open_official_scholarship"
+            destination_url = scholarship.source_url
+            status_message = "Open the official scholarship page to continue. I can help you answer its questions."
+        else:
+            next_action = "unavailable"
+            destination_url = None
+            status_message = "The official application link wasn't available for this award."
         state = ScholarshipApplicationState(
             application_id=uuid4().hex,
             scholarship_id=scholarship.id,
             scholarship_name=scholarship.name,
             application_url=scholarship.application_url,
             inspection_status=inspection_status,
+            next_action=next_action,
+            destination_url=destination_url,
+            status_message=status_message,
+            next_question=next_missing.label if next_missing else None,
             fields=fields,
             known_fields=academic_known,
             missing_fields=missing,
@@ -415,6 +527,14 @@ class ScholarshipSession:
         ]
         state.pending_background_field = next(
             (item.field_id for item in state.fields if item.field_id in BACKGROUND_FIELDS and item.field_id in state.missing_fields),
+            None,
+        )
+        state.next_question = next(
+            (
+                item.label
+                for item in state.fields
+                if item.required and item.known_answer in (None, "")
+            ),
             None,
         )
         with self._lock:
@@ -471,6 +591,14 @@ class ScholarshipSession:
         field.known_answer = draft.draft_text
         state.known_fields[field_id] = draft.draft_text
         state.missing_fields = [item for item in state.missing_fields if item != field_id]
+        state.next_question = next(
+            (
+                item.label
+                for item in state.fields
+                if item.required and item.known_answer in (None, "")
+            ),
+            None,
+        )
         with self._lock:
             self.applications[application_id] = state
         return draft
@@ -488,9 +616,17 @@ class ScholarshipSession:
                 warnings.append(f"{field.label} has not been explicitly reviewed and approved.")
         if state.inspection_status != "official_form":
             warnings.append("Application fields were inferred from official award criteria; review the official application before submission.")
+        if state.next_action != "guided_application":
+            warnings.append(
+                "Official application fields were not machine-accessible; complete and review the official page."
+            )
         state.missing_fields = missing
         state.validation_errors = missing + warnings
-        state.ready_for_review = not missing and not any("not been explicitly" in warning for warning in warnings)
+        state.ready_for_review = (
+            state.next_action == "guided_application"
+            and not missing
+            and not any("not been explicitly" in warning for warning in warnings)
+        )
         with self._lock:
             self.applications[application_id] = state
         return ApplicationPreview(
@@ -579,6 +715,7 @@ class ScholarshipSession:
             "minor": academic_known["minor"],
             "gpa": academic_known["cumulative_gpa"],
             "credit": academic_known["completed_credits"],
+            "year": academic_known["year_of_study"],
         }
         for term, value in mapping.items():
             if term in key or term in label:
@@ -604,6 +741,14 @@ class ScholarshipSession:
         ]
         state.pending_background_field = next(
             (item.field_id for item in state.fields if item.field_id in BACKGROUND_FIELDS and item.field_id in state.missing_fields),
+            None,
+        )
+        state.next_question = next(
+            (
+                item.label
+                for item in state.fields
+                if item.required and item.known_answer in (None, "")
+            ),
             None,
         )
         return state

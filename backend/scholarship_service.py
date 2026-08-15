@@ -206,6 +206,7 @@ class ScholarshipDiscoveryService:
                     return "official_form", parsed
             except ScholarshipResearchError:
                 pass
+            return "unavailable", []
         fields = self._criteria_fields(scholarship)
         return ("criteria_based_preview" if fields else "unavailable"), fields
 
@@ -429,21 +430,44 @@ class ScholarshipDiscoveryService:
 
     @staticmethod
     def _infer_years(status: Any, description: str) -> list[str]:
-        text = f"{status or ''} {description}".casefold()
+        status_text = str(status or "").casefold()
+        description_text = description.casefold()
+        text = f"{status_text} {description_text}"
         labels = {
-            "1st": ["first", "1st"],
-            "2nd": ["second", "2nd"],
-            "3rd": ["third", "3rd"],
-            "4th": ["fourth", "4th"],
+            "1st": ["first", "1st", "1"],
+            "2nd": ["second", "2nd", "2"],
+            "3rd": ["third", "3rd", "3"],
+            "4th": ["fourth", "4th", "4"],
         }
-        return [
-            f"Current {label} Year"
-            for label, terms in labels.items()
-            if any(
-                re.search(rf"\b{term}\b(?=[^.!?]{{0,30}}\byear\b)", text)
+        inferred: list[str] = []
+        description_sentences = re.split(r"(?<=[.!?])\s+", description_text)
+        for label, terms in labels.items():
+            status_matches = any(
+                re.search(rf"\b{term}\b(?=[^.!?]{{0,35}}\byears?\b)", status_text)
+                or re.search(rf"\byears?\b[^.!?]{{0,35}}\b{term}\b", status_text)
                 for term in terms
             )
-        ]
+            if status_matches:
+                timing = "Entering" if "entering" in status_text else "Current"
+                inferred.append(f"{timing} {label} Year")
+            matching_sentences = [
+                sentence
+                for sentence in description_sentences
+                if any(
+                    re.search(rf"\b{term}\b(?=[^.!?]{{0,35}}\byears?\b)", sentence)
+                    or re.search(rf"\byears?\b[^.!?]{{0,35}}\b{term}\b", sentence)
+                    for term in terms
+                )
+            ]
+            if not matching_sentences:
+                continue
+            timing = "Entering" if any("entering" in sentence for sentence in matching_sentences) else "Current"
+            item = f"{timing} {label} Year"
+            if item not in inferred:
+                inferred.append(item)
+        if re.search(r"\bupper[- ]year\b", text) and not inferred:
+            inferred.append("Upper Year")
+        return inferred
 
     @staticmethod
     def _is_sensitive(label: str) -> bool:
@@ -495,8 +519,19 @@ class ScholarshipDiscoveryService:
         if faculty:
             faculty_terms = [term for term in re.split(r"\W+", faculty.casefold()) if len(term) > 4]
             score += min(4, sum(term in text for term in faculty_terms))
-        if year_of_study and any(term in text for term in (f"{year_of_study}rd year", f"{year_of_study}th year", f"{year_of_study}nd year", f"{year_of_study}st year")):
-            score += 3
+        if year_of_study:
+            word_years = {1: "first", 2: "second", 3: "third", 4: "fourth"}
+            ordinal_terms = tuple(
+                f"{year_of_study}{suffix} year" for suffix in ("st", "nd", "rd", "th")
+            )
+            word = word_years.get(year_of_study, "")
+            if any(term in text for term in ordinal_terms) or re.search(
+                rf"\b{word}[- ]year\b|\byears?\b[^.!?]{{0,30}}\b(?:{year_of_study}|{word})\b",
+                text,
+            ):
+                score += 3
+            elif year_of_study >= 2 and re.search(r"\bupper[- ]year\b", text):
+                score += 2
         if keyword and keyword.casefold() in text:
             score += 10
         if item.get("deadline"):

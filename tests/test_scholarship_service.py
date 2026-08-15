@@ -45,6 +45,19 @@ class StubDiscovery:
     def clear(self):
         return None
 
+    def search(self, **kwargs):
+        self.last_search_kwargs = kwargs
+        return ScholarshipSearchResult(
+            scholarships=[self.scholarship],
+            source_mode="demo_fallback",
+            sources=[
+                ScholarshipSource(
+                    title="UPEI Scholarships and Awards",
+                    url=self.scholarship.source_url,
+                )
+            ],
+        )
+
 
 def demo_scholarship(**overrides):
     values = {
@@ -55,7 +68,7 @@ def demo_scholarship(**overrides):
         "description": "A demo award for Computer Science students with financial need.",
         "faculty": ["School of Mathematical and Computational Sciences"],
         "major": ["Computer Science"],
-        "year_of_study": ["Current 3rd Year"],
+        "year_of_study": ["Current 2nd Year"],
         "academic_requirements": "Good academic standing.",
         "minimum_average": 80,
         "financial_need_required": True,
@@ -169,6 +182,26 @@ class ScholarshipDiscoveryTests(unittest.TestCase):
             ["Current 2nd Year", "Current 3rd Year", "Current 4th Year"],
         )
 
+    def test_year_parser_preserves_entering_and_upper_year_language(self):
+        self.assertEqual(
+            ScholarshipDiscoveryService._infer_years(
+                "Current students", "For students entering their fourth year."
+            ),
+            ["Entering 4th Year"],
+        )
+        self.assertEqual(
+            ScholarshipDiscoveryService._infer_years(
+                "Current students", "Awarded to an upper-year SMCS student."
+            ),
+            ["Upper Year"],
+        )
+        self.assertEqual(
+            ScholarshipDiscoveryService._infer_years(
+                "Current students", "Open to students in years 3 or 4."
+            ),
+            ["Current 3rd Year", "Current 4th Year"],
+        )
+
 
 class ScholarshipSessionTests(unittest.TestCase):
     def setUp(self):
@@ -194,6 +227,11 @@ class ScholarshipSessionTests(unittest.TestCase):
 
     def test_background_confirmation_draft_review_and_submission_gate(self):
         state = self.session.open_application(self.scholarship.id, self.snapshot)
+        self.assertEqual(state.next_action, "guided_application")
+        self.assertEqual(
+            state.next_question,
+            "Does financial need apply to your situation?",
+        )
         self.assertEqual(state.pending_background_field, "financial_need")
         with self.assertRaises(ValueError):
             self.session.save_background_answer("financial_need", True, confirmed=False)
@@ -237,6 +275,110 @@ class ScholarshipSessionTests(unittest.TestCase):
         self.assertTrue(submitted.approved_for_submission)
         self.assertTrue(submitted.submitted)
         self.assertEqual(submitted.submission_status, "demo_submission_recorded_no_external_action")
+
+    def test_calculated_fourth_year_drives_search_and_year_matching(self):
+        record = load_demo_record()
+        record["student"] = {
+            **record["student"],
+            "faculty": "SMCS",
+            "completed_credits": 102,
+            "required_degree_credits": 120,
+            "year_of_study": 1,
+        }
+        snapshot = build_academic_snapshot(record, source="demo")
+        scholarships = [
+            demo_scholarship(
+                id="year-four",
+                year_of_study=["Current 4th Year"],
+                financial_need_required=None,
+                personal_statement_required=False,
+            ),
+            demo_scholarship(
+                id="year-one",
+                year_of_study=["Current 1st Year"],
+                financial_need_required=None,
+                personal_statement_required=False,
+            ),
+            demo_scholarship(
+                id="upper-year",
+                major=[],
+                faculty=["School of Mathematical and Computational Sciences"],
+                year_of_study=["Upper Year"],
+                minimum_average=None,
+                academic_requirements=None,
+                financial_need_required=None,
+                personal_statement_required=False,
+            ),
+            demo_scholarship(
+                id="entering-four",
+                year_of_study=["Entering 4th Year"],
+                financial_need_required=None,
+                personal_statement_required=False,
+            ),
+        ]
+        search = ScholarshipSearchResult(
+            scholarships=scholarships,
+            source_mode="demo_fallback",
+            sources=[ScholarshipSource(title="UPEI", url=scholarships[0].source_url)],
+        )
+
+        ranked = {match.scholarship_id: match for match in self.session.rank(search, snapshot)}
+
+        self.assertEqual(snapshot.student.year_of_study, 4)
+        self.assertIn("fourth-year standing", " ".join(ranked["year-four"].known_matches).casefold())
+        self.assertEqual(ranked["year-one"].match_level, "not_eligible")
+        self.assertIn("first year", " ".join(ranked["year-one"].known_conflicts).casefold())
+        self.assertIn("upper-year", " ".join(ranked["upper-year"].known_matches).casefold())
+        self.assertEqual(ranked["entering-four"].match_level, "needs_more_information")
+
+    def test_search_and_rank_receives_calculated_year_and_academic_profile(self):
+        record = load_demo_record()
+        record["student"] = {
+            **record["student"],
+            "faculty": "SMCS",
+            "completed_credits": 102,
+            "required_degree_credits": 120,
+        }
+        snapshot = build_academic_snapshot(record, source="demo")
+        scholarship = demo_scholarship(
+            year_of_study=["Current 4th Year"],
+            financial_need_required=None,
+            personal_statement_required=False,
+        )
+        discovery = StubDiscovery(scholarship)
+        session = ScholarshipSession(discovery)
+
+        result = session.search_and_rank(snapshot)
+
+        self.assertEqual(discovery.last_search_kwargs["year_of_study"], 4)
+        self.assertEqual(result["student_profile_used"]["year_of_study"], 4)
+        self.assertEqual(result["student_profile_used"]["completed_credits"], 102)
+        self.assertEqual(result["student_profile_used"]["cumulative_gpa"], snapshot.student.cumulative_gpa)
+
+    def test_source_only_application_returns_exact_official_destination(self):
+        source_url = "https://www.upei.ca/scholarships-and-awards/display?awardid=596"
+        scholarship = demo_scholarship(
+            id="596",
+            source_url=source_url,
+            detail_status="source_only",
+            application_url=None,
+        )
+        session = ScholarshipSession(StubDiscovery(scholarship))
+
+        state = session.open_application("596", self.snapshot)
+
+        self.assertTrue(state.application_id)
+        self.assertEqual(state.next_action, "open_official_scholarship")
+        self.assertEqual(state.destination_url, source_url)
+        self.assertEqual(state.inspection_status, "unavailable")
+        self.assertEqual(state.fields, [])
+        self.assertFalse(session.prepare_preview(state.application_id).ready)
+
+    def test_canonical_apply_route_is_available(self):
+        from backend.app import app
+
+        paths = {route.path for route in app.routes}
+        self.assertIn("/api/scholarships/{scholarship_id}/apply", paths)
 
 
 if __name__ == "__main__":

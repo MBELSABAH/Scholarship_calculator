@@ -106,6 +106,15 @@ class ScholarshipApplicationState(BaseModel):
     scholarship_name: str
     application_url: str | None = None
     inspection_status: Literal["official_form", "criteria_based_preview", "unavailable"]
+    next_action: Literal[
+        "guided_application",
+        "open_official_application",
+        "open_official_scholarship",
+        "unavailable",
+    ]
+    destination_url: str | None = None
+    status_message: str
+    next_question: str | None = None
     fields: list[ApplicationField]
     known_fields: dict[str, Any] = Field(default_factory=dict)
     missing_fields: list[str] = Field(default_factory=list)
