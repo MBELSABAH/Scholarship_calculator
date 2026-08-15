@@ -44,6 +44,7 @@ const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character
 }[character]));
 const renderSafeBasicMarkdown = window.AcademicCopilotChatFormat.renderSafeBasicMarkdown;
 const salutationForHour = window.AcademicCopilotGreeting.salutationForHour;
+const { MATCH_FILTER_LABELS, matchFilterCounts, matchFilterEmptyMessage } = window.AcademicCopilotMatchFilters;
 
 const formatNumber = (value, digits = 0) => value === null || value === undefined ? "—" : Number(value).toLocaleString("en-CA", {
   minimumFractionDigits: digits,
@@ -453,6 +454,12 @@ function matchLabel(level) {
 }
 
 function renderScholarshipMatches() {
+  const counts = matchFilterCounts(scholarshipMatches);
+  scholarshipFilters.querySelectorAll("[data-match-filter]").forEach((button) => {
+    const level = button.dataset.matchFilter;
+    button.textContent = `${MATCH_FILTER_LABELS[level]} ${counts[level] || 0}`;
+    button.classList.toggle("active", level === activeMatchFilter);
+  });
   const visible = activeMatchFilter === "all" ? scholarshipMatches : scholarshipMatches.filter((match) => match.match_level === activeMatchFilter);
   scholarshipFilters.hidden = scholarshipMatches.length === 0;
   if (!scholarshipMatches.length) {
@@ -460,7 +467,7 @@ function renderScholarshipMatches() {
     return;
   }
   if (!visible.length) {
-    scholarshipResults.innerHTML = '<div class="discovery-empty"><div><strong>No awards in this filter</strong><p>Try another match level.</p></div></div>';
+    scholarshipResults.innerHTML = `<div class="discovery-empty"><div><strong>${escapeHtml(matchFilterEmptyMessage(activeMatchFilter))}</strong><p>Try another match level.</p></div></div>`;
     return;
   }
   scholarshipResults.innerHTML = visible.map((match) => {
