@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 import logging
 import os
+import re
 import time
 import asyncio
 from copy import deepcopy
@@ -306,6 +307,19 @@ class AgentService:
             raise AgentServiceError("Enter a question for Academic Copilot.", http_status=422)
 
         active_id, history = self.conversations.open(conversation_id, mode=mode)
+        if mode == "scholarship" and re.search(r"\bcontinue eligibility questions?\b", question, re.I):
+            pending = SCHOLARSHIP_SESSION.continue_discovery_interview()
+            answer = pending["question"] if pending else "I've checked the remaining published eligibility details."
+            self.conversations.append_turn(active_id, question, answer)
+            return AgentResult(
+                message=answer,
+                conversation_id=active_id,
+                tools_used=[],
+                suggested_replies=pending.get("allowed_values", []) if pending else ["Show best match"],
+                sources=[],
+                ui_updates=[],
+                pending_question=pending,
+            )
         if mode == "scholarship":
             pending_result = SCHOLARSHIP_SESSION.resolve_pending_question(question, snapshot)
             if pending_result:
@@ -315,7 +329,7 @@ class AgentService:
                     message=answer,
                     conversation_id=active_id,
                     tools_used=[],
-                    suggested_replies=(pending_result.get("pending_question") or {}).get("allowed_values", ["Show best match"]),
+                    suggested_replies=(pending_result.get("pending_question") or {}).get("allowed_values", ["Continue eligibility questions"] if pending_result.get("resolved") and SCHOLARSHIP_SESSION.discovery_questions_asked >= SCHOLARSHIP_SESSION.discovery_question_limit else ["Show best match"]),
                     sources=[],
                     ui_updates=["refresh_scholarships"] if pending_result.get("resolved") else [],
                     pending_question=pending_result.get("pending_question"),

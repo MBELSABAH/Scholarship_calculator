@@ -30,6 +30,8 @@ LIST_BACKGROUND_FIELDS = {
     "leadership",
     "volunteering",
     "clubs",
+    "athletics",
+    "field_specific_involvement",
     "personal_story_notes",
     "other_awards",
 }
@@ -82,6 +84,8 @@ class ScholarshipSession:
         self.matches: list[ScholarshipMatch] = []
         self.applications: dict[str, ScholarshipApplicationState] = {}
         self.pending_question: dict[str, Any] | None = None
+        self.discovery_questions_asked = 0
+        self.discovery_question_limit = 5
         self._lock = Lock()
 
     def clear_student_state(self) -> None:
@@ -90,6 +94,7 @@ class ScholarshipSession:
             self.matches = []
             self.applications = {}
             self.pending_question = None
+            self.discovery_questions_asked = 0
         self.discovery.clear()
 
     def get_background(self) -> dict[str, Any]:
@@ -115,56 +120,103 @@ class ScholarshipSession:
                 self.applications[application_id] = updated
         return {"saved": True, "field": field, "value": normalised}
 
+    @staticmethod
+    def _extract_personal_criteria(scholarship: ScholarshipRecord) -> list[dict[str, Any]]:
+        """Normalize only explicit, student-supplied criteria from official award text."""
+        patterns = (
+            ("financial_need", r"financial need", "Does financial need apply to your situation?", "boolean"),
+            ("international_student", r"international student", "Are you an international student?", "boolean"),
+            ("citizenship_status", r"canadian citizen|permanent resident|citizenship", "What is your citizenship or residency status?", "text"),
+            ("province_or_region", r"pei resident|prince edward island resident|resident of", "Are you a PEI resident?", "boolean"),
+            ("pei_high_school_graduate", r"(?:pei|prince edward island) high school", "Did you graduate from a Prince Edward Island high school?", "boolean"),
+            ("gender_identity_criterion", r"\b(?:woman|women|female)\b", "This award is restricted to female students. Does that apply to you?", "boolean"),
+            ("indigenous_identity", r"indigenous|mi['’]?kmaq|first nations|inuit|m[eé]tis", "Does the Indigenous identity criterion apply to you?", "boolean"),
+            ("disability_status", r"disabilit(?:y|ies)", "Does the disability criterion apply to you?", "boolean"),
+            ("community_involvement", r"community involvement|volunteer(?:ing| work)?", "Have you done volunteer or community work?", "boolean"),
+            ("leadership", r"\bleadership\b", "Do you have leadership experience?", "boolean"),
+            ("clubs", r"\bclubs?|extracurricular", "Have you participated in clubs or extracurricular activities?", "boolean"),
+            ("employment", r"employment|work experience|workplace", "Do you have relevant work experience?", "boolean"),
+            ("career_goals", r"career goals?|career interest", "Do you have career goals related to this award?", "boolean"),
+            ("athletics", r"athlet(?:e|ic|ics)|varsity|sport", "Have you participated in athletics or varsity sport?", "boolean"),
+            ("family_alumni_relationship", r"alumni relationship|child of an alumn|family.*alumn", "Does an alumni or family relationship criterion apply to you?", "boolean"),
+            ("school_or_community_affiliation", r"community affiliation|school affiliation|from the community of", "Does the named school or community affiliation apply to you?", "boolean"),
+            ("academic_interests", r"academic interest|interest in", "Do you have the academic interest named by this award?", "boolean"),
+            ("field_specific_involvement", r"demonstrated involvement in|participation in (?:community|research|music|athletics|sport)", "Have you participated in the named field-specific activity?", "boolean"),
+        )
+        criteria: list[dict[str, Any]] = []
+        for sentence in re.split(r"(?<=[.!?])\s+", scholarship.description or ""):
+            lowered = sentence.casefold()
+            if not lowered:
+                continue
+            preference = bool(re.search(r"preference|consideration|desirable", lowered))
+            required = not preference and bool(re.search(r"must|required|restricted|available to|awarded to|open to", lowered))
+            for key, pattern, question, answer_type in patterns:
+                if re.search(pattern, lowered, re.I):
+                    criterion_required = required or (key == "financial_need" and bool(scholarship.financial_need_required))
+                    criteria.append({
+                        "key": key,
+                        "required": criterion_required,
+                        "preference": preference,
+                        "published_text": sentence.strip(),
+                        "source_url": scholarship.source_url,
+                        "question": question,
+                        "expected_answer_type": answer_type,
+                    })
+        return criteria
+
+    @staticmethod
+    def _criterion_is_known(background: StudentBackgroundProfile, key: str) -> bool:
+        value = getattr(background, key, None)
+        return value not in (None, "", [])
+
     def next_profile_question(self) -> dict[str, Any] | None:
-        """Store one high-impact, source-grounded scholarship question for deterministic follow-up."""
+        """Choose the unresolved official criterion that improves the most promising matches."""
         with self._lock:
             if self.pending_question:
                 return dict(self.pending_question)
             matches = list(self.matches)
             background = self.background
-        candidates: dict[str, list[ScholarshipMatch]] = {"financial_need": [], "gender_identity_criterion": [], "pei_high_school_graduate": []}
+            asked = self.discovery_questions_asked
+        if asked >= self.discovery_question_limit:
+            return None
+        candidates: dict[str, dict[str, Any]] = {}
         for match in matches:
             if match.match_level not in {"potential", "strong"}:
                 continue
-            text = match.scholarship.description
-            if match.scholarship.financial_need_required and background.financial_need is None:
-                candidates["financial_need"].append(match)
-            if re.search(r"\b(?:woman|women|female)\b", text, re.I) and background.gender_identity_criterion is None:
-                candidates["gender_identity_criterion"].append(match)
-            if re.search(r"\b(?:pei|prince edward island) high school\b", text, re.I) and background.pei_high_school_graduate is None:
-                candidates["pei_high_school_graduate"].append(match)
-        field = max(candidates, key=lambda key: len(candidates[key]))
-        affected = candidates[field]
-        if not affected:
+            for criterion in self._extract_personal_criteria(match.scholarship):
+                key = criterion["key"]
+                if self._criterion_is_known(background, key):
+                    continue
+                item = candidates.setdefault(key, {**criterion, "matches": []})
+                item["matches"].append(match)
+                item["required"] = item["required"] or criterion["required"]
+        if not candidates:
             return None
-        scholarship = affected[0].scholarship
-        source_text = scholarship.description
-        if field == "gender_identity_criterion":
-            requirement = next((line.strip() for line in re.split(r"(?<=[.!?])\s+", source_text) if re.search(r"\b(?:woman|women|female)\b", line, re.I)), "This award is restricted to female students.")
-            question = "This award is restricted to female students. Does that apply to you?"
-            choices = ["Yes", "No", "Prefer not to say"]
-        elif field == "financial_need":
-            requirement = "This award requires financial need."
-            question = "Does financial need apply to your situation?"
-            choices = ["Yes", "No", "Not sure"]
-        else:
-            requirement = "Applicant must have graduated from a Prince Edward Island high school."
-            question = "Did you graduate from a Prince Edward Island high school?"
-            choices = ["Yes", "No", "Not sure"]
+        candidate = max(candidates.values(), key=lambda item: (item["required"], len(item["matches"]), max(match.scholarship.amount or 0 for match in item["matches"])))
+        field = candidate["key"]
+        affected = candidate["matches"]
+        choices = ["Yes", "No", "Prefer not to say"] if candidate["expected_answer_type"] == "boolean" else []
         pending = {
             "field": field,
             "criterion_label": field.replace("_", " "),
             "scholarship_ids": [item.scholarship_id for item in affected],
-            "official_requirement_text": requirement,
-            "source_url": scholarship.source_url,
-            "required": True,
-            "expected_answer_type": "boolean",
+            "official_requirement_text": candidate["published_text"],
+            "source_url": candidate["source_url"],
+            "required": candidate["required"],
+            "preference": candidate["preference"],
+            "expected_answer_type": candidate["expected_answer_type"],
             "allowed_values": choices,
-            "question": question,
+            "question": candidate["question"],
         }
         with self._lock:
             self.pending_question = pending
+            self.discovery_questions_asked += 1
         return dict(pending)
+
+    def continue_discovery_interview(self) -> dict[str, Any] | None:
+        with self._lock:
+            self.discovery_questions_asked = 0
+        return self.next_profile_question()
 
     def resolve_pending_question(self, message: str, snapshot: AcademicSnapshot) -> dict[str, Any] | None:
         with self._lock:
@@ -179,7 +231,19 @@ class ScholarshipSession:
             return {"resolved": False, "message": "Here, financial need means the award requires you to confirm that financial circumstances make funding support relevant.", "pending_question": pending}
         if field == "pei_high_school_graduate" and re.search(r"what.*count|what.*mean", lowered):
             return {"resolved": False, "message": pending["official_requirement_text"], "pending_question": pending}
+        if re.search(r"^why\??$|why (?:do|does)|what does that mean", lowered):
+            count = len(pending["scholarship_ids"])
+            return {"resolved": False, "message": f"{count} of your current scholarship matches list this as an eligibility criterion: {pending['official_requirement_text']}", "pending_question": pending}
         value: bool | None = None
+        if pending.get("expected_answer_type") == "text" and lowered:
+            saved = self.save_background_answer(field, message.strip(), confirmed=True)
+            with self._lock:
+                self.pending_question = None
+            cached_search = getattr(self.discovery, "cached_search", None)
+            search = cached_search() if callable(cached_search) else None
+            matches = self.rank(search, snapshot) if search else []
+            next_question = self.next_profile_question()
+            return {"resolved": True, "message": next_question["question"] if next_question else "I've checked the main eligibility details. Your matches are fully reranked.", "saved": saved, "matches": [_model_dump(item) for item in matches], "pending_question": next_question}
         if re.fullmatch(r"(?:yes|y|true)", lowered):
             value = True
         elif re.fullmatch(r"(?:no|n|false)", lowered):
@@ -191,7 +255,14 @@ class ScholarshipSession:
                 value = True
         if value is None:
             return None
-        saved = self.save_background_answer(field, value, confirmed=True)
+        value_to_save: Any = value
+        if field == "province_or_region":
+            value_to_save = "Prince Edward Island" if value else "Not Prince Edward Island"
+        elif field in LIST_BACKGROUND_FIELDS:
+            value_to_save = ["Confirmed" if value else "Not applicable"]
+        elif field in {"employment", "career_goals", "family_alumni_relationship", "school_or_community_affiliation", "academic_interests"}:
+            value_to_save = "Confirmed" if value else "Not applicable"
+        saved = self.save_background_answer(field, value_to_save, confirmed=True)
         with self._lock:
             self.pending_question = None
         cached_search = getattr(self.discovery, "cached_search", None)
@@ -210,8 +281,13 @@ class ScholarshipSession:
         next_question = self.next_profile_question()
         if selected and selected.match_level == "unlikely":
             response = "That award requires a female student, so it is now an Unlikely Fit."
+        elif next_question:
+            response = next_question["question"]
+        elif self.discovery_questions_asked >= self.discovery_question_limit:
+            response = "I've updated the main eligibility factors. There are a few lower-impact details left."
         else:
-            response = "Your scholarship matches have been updated."
+            totals = {level: sum(item.match_level == level for item in matches) for level in ("excellent", "strong", "potential", "unlikely")}
+            response = f"I've checked the main eligibility details. Your matches are fully reranked: Excellent {totals['excellent']}, Strong {totals['strong']}, Potential {totals['potential']}, Unlikely {totals['unlikely']}."
         return {"resolved": True, "message": response, "saved": saved, "matches": [_model_dump(item) for item in matches], "pending_question": next_question}
 
     def search_and_rank(
@@ -452,6 +528,20 @@ class ScholarshipSession:
                     conflicts.append(f"The award requires {required_terms} completed co-op work terms.")
                 else:
                     known_matches.append("Student-confirmed co-op experience is available for the published criterion.")
+
+            handled_criteria = {"financial_need", "gender_identity_criterion", "pei_high_school_graduate", "indigenous_identity", "disability_status"}
+            for criterion in self._extract_personal_criteria(scholarship):
+                key = criterion["key"]
+                if key in handled_criteria:
+                    continue
+                value = getattr(background, key, None)
+                if value in (None, "", []):
+                    missing.append(criterion["published_text"])
+                    eligibility_unknown = eligibility_unknown or criterion["required"]
+                elif criterion["required"] and (isinstance(value, bool) and not value or value == ["Not applicable"] or value == "Not applicable"):
+                    conflicts.append(criterion["published_text"])
+                else:
+                    known_matches.append(f"Student-confirmed {key.replace('_', ' ')} matches the published criterion.")
 
             if scholarship.personal_statement_required:
                 missing.append("A reviewed personal statement is required for the application.")

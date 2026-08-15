@@ -89,6 +89,11 @@ class StudentBackgroundProfile(BaseModel):
     pei_high_school_graduate: bool | None = None
     co_op_terms_completed: int | None = None
     employment: str | None = None
+    athletics: list[str] = Field(default_factory=list)
+    family_alumni_relationship: str | None = None
+    school_or_community_affiliation: str | None = None
+    academic_interests: str | None = None
+    field_specific_involvement: list[str] = Field(default_factory=list)
     community_involvement: list[str] = Field(default_factory=list)
     leadership: list[str] = Field(default_factory=list)
     volunteering: list[str] = Field(default_factory=list)

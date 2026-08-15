@@ -298,6 +298,26 @@ class ScholarshipSessionTests(unittest.TestCase):
         self.assertFalse(self.session.get_background()["gender_identity_criterion"])
         self.assertIn("Unlikely Fit", resolved["message"])
 
+    def test_discovery_interview_moves_to_next_high_impact_official_criterion(self):
+        awards = [
+            demo_scholarship(id=f"need-{index}", description="Available to Computer Science students with financial need.", financial_need_required=True)
+            for index in range(4)
+        ] + [
+            demo_scholarship(id=f"international-{index}", description="Available to an international student in Computer Science.", financial_need_required=None)
+            for index in range(3)
+        ] + [
+            demo_scholarship(id=f"pei-{index}", description="Applicant must have graduated from a PEI high school.", financial_need_required=None)
+            for index in range(2)
+        ]
+        search = ScholarshipSearchResult(scholarships=awards, source_mode="demo_fallback", sources=[])
+        self.session.rank(search, self.snapshot)
+        first = self.session.next_profile_question()
+        self.assertEqual(first["field"], "financial_need")
+        next_step = self.session.resolve_pending_question("Yes", self.snapshot)
+        self.assertTrue(next_step["resolved"])
+        self.assertEqual(next_step["pending_question"]["field"], "international_student")
+        self.assertEqual(next_step["message"], "Are you an international student?")
+
     def test_background_confirmation_draft_review_and_submission_gate(self):
         state = self.session.open_application(self.scholarship.id, self.snapshot)
         self.assertEqual(state.next_action, "guided_application")
