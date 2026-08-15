@@ -36,8 +36,6 @@ let currentApplicationId = null;
 let scholarshipMatches = [];
 let activeMatchFilter = "all";
 let applicationStartActive = false;
-const expandedScholarshipIds = new Set();
-let pendingDiscoveryQuestion = null;
 
 const escapeHtml = (value) => String(value ?? "").replace(/[&<>'"]/g, (character) => ({
   "&": "&amp;", "<": "&lt;", ">": "&gt;", "'": "&#39;", '"': "&quot;",
@@ -236,10 +234,6 @@ async function applyUiUpdates(updates) {
 async function sendChatMessage(rawMessage) {
   const message = String(rawMessage || "").trim();
   if (!message || chatRequestActive) return;
-  if (pendingDiscoveryQuestion && /^(yes|no)$/i.test(message)) {
-    await answerDiscoveryQuestion(message);
-    return;
-  }
   addChatMessage("user", message);
   chatInput.value = "";
   chatSuggestions.replaceChildren();
@@ -259,14 +253,6 @@ async function sendChatMessage(rawMessage) {
     });
     addChatMessage("assistant", responseBody.message, false, responseBody.sources || []);
     conversationId = responseBody.conversation_id;
-    if (responseBody.application_id && responseBody.application_id !== currentApplicationId) {
-      const state = await apiRequest(`/api/applications/${encodeURIComponent(responseBody.application_id)}`);
-      currentApplicationId = state.application_id;
-      currentScholarshipId = state.scholarship_id;
-      setCopilotContext("application", state.scholarship_id, state.application_id, `Application · ${state.scholarship_name}`);
-      if (state.next_action === "guided_application") renderApplication(state);
-      else renderExternalApplication(state);
-    }
     await applyUiUpdates(responseBody.ui_updates);
     renderChatSuggestions(Array.isArray(responseBody.suggested_replies) ? responseBody.suggested_replies : initialChatSuggestions.slice(0, 2));
   } catch (error) {
@@ -275,38 +261,6 @@ async function sendChatMessage(rawMessage) {
   } finally {
     setChatBusy(false);
     chatInput.focus();
-  }
-}
-
-async function answerDiscoveryQuestion(message) {
-  const pending = pendingDiscoveryQuestion;
-  if (!pending) return;
-  addChatMessage("user", message);
-  setChatBusy(true, message);
-  try {
-    const body = await apiRequest("/api/student-background", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ field: pending.field, value: /^yes$/i.test(message), confirmed: true }),
-    });
-    if (Array.isArray(body.matches)) {
-      scholarshipMatches = body.matches;
-      renderScholarshipMatches();
-      scholarshipResults.classList.add("matches-reranked");
-      setTimeout(() => scholarshipResults.classList.remove("matches-reranked"), 350);
-    }
-    pendingDiscoveryQuestion = body.next_profile_question || null;
-    if (pendingDiscoveryQuestion?.question) {
-      addChatMessage("assistant", pendingDiscoveryQuestion.question);
-      renderChatSuggestions(pendingDiscoveryQuestion.choices?.length ? pendingDiscoveryQuestion.choices : ["Not sure"]);
-    } else {
-      addChatMessage("assistant", "Your scholarship matches have been updated.");
-      renderChatSuggestions(["Show my best match", "Start an application"]);
-    }
-  } catch (error) {
-    addChatMessage("assistant", error.message, true);
-  } finally {
-    setChatBusy(false);
   }
 }
 
@@ -445,11 +399,12 @@ function summaryCards(snapshot) {
 
 function matchLabel(level) {
   return {
-    excellent: "Excellent Match",
-    strong: "Strong Match",
-    potential: "Potential Fit",
-    unlikely: "Unlikely Fit",
-  }[level] || "Potential Fit";
+    excellent: "Excellent match",
+    good: "Good match",
+    possible: "Possible match",
+    needs_more_information: "Needs information",
+    not_eligible: "Known conflict",
+  }[level] || "Possible match";
 }
 
 function renderScholarshipMatches() {
@@ -466,8 +421,16 @@ function renderScholarshipMatches() {
   scholarshipResults.innerHTML = visible.map((match) => {
     const scholarship = match.scholarship;
     const source = officialSourceUrl(scholarship.source_url);
-    const expanded = expandedScholarshipIds.has(match.scholarship_id);
-    const applyLabel = currentApplicationId && currentScholarshipId === match.scholarship_id ? "Continue application" : "Start application";
+    const viewAction = scholarship.detail_status === "source_only" && source
+      ? `<a class="link-action" href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer" aria-label="View ${escapeHtml(scholarship.name)} on the official UPEI page">View</a>`
+      : `<button type="button" class="link-action" data-view-scholarship="${escapeHtml(match.scholarship_id)}">View</button>`;
+    const directApplyDestination = officialSourceUrl(
+      scholarship.application_url
+      || (scholarship.detail_status === "source_only" ? scholarship.source_url : null),
+    );
+    const applyAction = directApplyDestination
+      ? `<a class="primary-inline compact-action" data-apply-scholarship="${escapeHtml(match.scholarship_id)}" href="${escapeHtml(directApplyDestination)}" target="_blank" rel="noopener noreferrer">Apply</a>`
+      : `<button type="button" class="primary-inline compact-action" data-apply-scholarship="${escapeHtml(match.scholarship_id)}">Apply</button>`;
     const facts = [
       ...match.known_matches.slice(0, 2).map((item) => `<li class="match-known">✓ ${escapeHtml(item)}</li>`),
       ...match.missing_information.slice(0, 2).map((item) => `<li class="match-missing">? ${escapeHtml(item)}</li>`),
@@ -480,31 +443,20 @@ function renderScholarshipMatches() {
           <strong class="match-amount">${escapeHtml(formatCurrency(scholarship.amount))}</strong>
         </div>
         <ul class="match-facts">${facts || "<li>Official criteria available in the detail view.</li>"}</ul>
-        ${expanded ? `
-          <div class="match-expanded">
-            <div><strong>About</strong><p>${escapeHtml(scholarship.description || "No description was published.")}</p></div>
-            <div><strong>Why you match</strong><p>${match.known_matches.length ? match.known_matches.map((item) => `✓ ${escapeHtml(item)}`).join("<br>") : "No confirmed criteria yet."}</p></div>
-            ${match.missing_information.length ? `<div><strong>Still needed</strong><p>${match.missing_information.map((item) => `? ${escapeHtml(item)}`).join("<br>")}</p></div>` : ""}
-            <div><strong>Deadline</strong><p>${escapeHtml(scholarshipDeadlineLabel(scholarship))}${scholarship.deadline_source ? ` · ${escapeHtml(scholarship.deadline_source.replaceAll("_", " "))}` : ""}</p></div>
-            <div><strong>Application</strong><p>${escapeHtml((scholarship.submission_method || "unknown").replaceAll("_", " "))}</p></div>
-            ${source ? `<a class="link-action official-page-action" href="${escapeHtml(source)}" target="_blank" rel="noopener noreferrer">Open official scholarship page ↗</a>` : ""}
-          </div>` : ""}
         <div class="match-card-footer">
           <span>${escapeHtml(scholarshipDeadlineLabel(scholarship))}</span>
-          <span class="match-card-actions"><button type="button" class="link-action" data-toggle-details="${escapeHtml(match.scholarship_id)}">${expanded ? "Hide details ▴" : "Details ▾"}</button><button type="button" class="primary-inline compact-action" data-apply-scholarship="${escapeHtml(match.scholarship_id)}">${applyLabel}</button></span>
+          <span class="match-card-actions">${viewAction}${applyAction}</span>
         </div>
       </article>`;
   }).join("");
-  scholarshipResults.querySelectorAll("[data-toggle-details]").forEach((button) => {
-    button.addEventListener("click", () => {
-      const id = button.dataset.toggleDetails;
-      if (expandedScholarshipIds.has(id)) expandedScholarshipIds.delete(id);
-      else expandedScholarshipIds.add(id);
-      renderScholarshipMatches();
-    });
+  scholarshipResults.querySelectorAll("[data-view-scholarship]").forEach((button) => {
+    button.addEventListener("click", () => openScholarshipDetail(button.dataset.viewScholarship));
   });
   scholarshipResults.querySelectorAll("[data-apply-scholarship]").forEach((button) => {
-    button.addEventListener("click", () => startScholarshipApplication(button.dataset.applyScholarship));
+    button.addEventListener("click", () => startScholarshipApplication(
+      button.dataset.applyScholarship,
+      { officialPageOpened: button.tagName === "A" },
+    ));
   });
 }
 
@@ -529,15 +481,7 @@ async function runScholarshipSearch({ announceInChat = false } = {}) {
     }
     if (announceInChat) {
       addChatMessage("assistant", `I found and ranked ${scholarshipMatches.length} scholarship opportunities. Open one to review the official criteria and match explanation.`, false, body.sources || []);
-      const next = body.next_profile_question;
-      if (next?.question) {
-        pendingDiscoveryQuestion = next;
-        addChatMessage("assistant", next.question);
-        renderChatSuggestions(next.choices?.length ? next.choices : ["Not sure"]);
-      } else {
-        pendingDiscoveryQuestion = null;
-        renderChatSuggestions(["Show my best match", "Which potential fits need info?"]);
-      }
+      renderChatSuggestions(["Show my best match", "Which need more information?"]);
     }
   } catch (error) {
     scholarshipResults.innerHTML = `<div class="discovery-empty error"><div><strong>Scholarship search unavailable</strong><p>${escapeHtml(error.message)}</p></div></div>`;
@@ -770,21 +714,9 @@ function renderEmailPreview(draft) {
     <textarea id="email-body" rows="9">${escapeHtml(draft.body)}</textarea>
     <div class="email-attachments"><strong>Attachments</strong>${draft.attachments_required.length ? `<ul>${draft.attachments_required.map((item) => `<li>Attach ${escapeHtml(item)}</li>`).join("")}</ul>` : "<p>No official attachments were identified.</p>"}</div>
     ${draft.missing_fields.length ? `<p class="email-warning">${escapeHtml(draft.ready ? "" : `Not ready yet: ${draft.missing_fields.join("; ")}`)}</p>` : ""}
-    <div class="email-actions"><a id="open-email-draft" class="primary-inline" href="${escapeHtml(draft.ready && draft.mailto_url ? draft.mailto_url : "#")}" ${draft.ready && draft.mailto_url ? 'rel="noopener noreferrer"' : 'aria-disabled="true"'}>Open Email Draft</a><button type="button" class="secondary-action" id="copy-email-draft">Copy Email</button></div>`;
+    <a id="open-email-draft" class="primary-inline" href="${escapeHtml(draft.ready && draft.mailto_url ? draft.mailto_url : "#")}" ${draft.ready && draft.mailto_url ? 'target="_blank" rel="noopener noreferrer"' : 'aria-disabled="true"'}>Open Email Draft</a>`;
   applicationView.querySelector("#email-subject")?.addEventListener("input", refreshMailtoDraft);
   applicationView.querySelector("#email-body")?.addEventListener("input", refreshMailtoDraft);
-  applicationView.querySelector("#copy-email-draft")?.addEventListener("click", async (event) => {
-    const to = applicationView.querySelector("#email-to")?.textContent?.trim() || "";
-    const subject = applicationView.querySelector("#email-subject")?.value || "";
-    const body = applicationView.querySelector("#email-body")?.value || "";
-    const text = `To: ${to}\nSubject: ${subject}\n\n${body}`;
-    try {
-      await navigator.clipboard.writeText(text);
-      event.currentTarget.textContent = "Copied";
-    } catch {
-      event.currentTarget.textContent = "Copy unavailable";
-    }
-  });
 }
 
 async function prepareApplicationEmail(applicationId) {

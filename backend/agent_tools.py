@@ -167,14 +167,6 @@ TOOL_DEFINITIONS.extend(
         {
             "type": "function",
             "function": {
-                "name": "select_next_scholarship_profile_question",
-                "description": "Choose one short, high-impact unanswered scholarship eligibility question after ranking. Use it to continue discovery; never ask academic facts already in the snapshot.",
-                "parameters": {"type": "object", "properties": {}, "additionalProperties": False},
-            },
-        },
-        {
-            "type": "function",
-            "function": {
                 "name": "inspect_scholarship",
                 "description": "Retrieve one cached official scholarship and its match explanation by ID.",
                 "parameters": {
@@ -586,16 +578,7 @@ def rank_scholarship_matches(
                 if value not in (None, [], "")
             },
         },
-        "next_profile_question": SCHOLARSHIP_SESSION.select_next_scholarship_profile_question(),
     }
-
-
-def select_next_scholarship_profile_question(
-    snapshot: AcademicSnapshot, arguments: dict[str, Any] | None = None
-) -> dict[str, Any]:
-    del snapshot
-    _require_no_arguments(arguments or {})
-    return {"question": SCHOLARSHIP_SESSION.select_next_scholarship_profile_question()}
 
 
 def inspect_scholarship(
@@ -631,15 +614,9 @@ def save_student_background_answer(
         raise ToolExecutionError("field must be a string.")
     if not isinstance(arguments["confirmed"], bool):
         raise ToolExecutionError("confirmed must be true or false.")
-    saved = SCHOLARSHIP_SESSION.save_background_answer(
+    return SCHOLARSHIP_SESSION.save_background_answer(
         field, arguments["value"], confirmed=arguments["confirmed"]
     )
-    search = SCHOLARSHIP_SESSION.discovery.cached_search()
-    if search is not None:
-        matches = SCHOLARSHIP_SESSION.rank(search, snapshot)
-        saved["matches"] = [_model_dump(match) for match in matches]
-        saved["next_profile_question"] = SCHOLARSHIP_SESSION.select_next_scholarship_profile_question()
-    return saved
 
 
 def open_scholarship_application(
@@ -756,7 +733,6 @@ TOOL_FUNCTIONS: dict[str, ToolFunction] = {
     "project_gpa": project_gpa,
     "search_upei_scholarships": search_upei_scholarships,
     "rank_scholarship_matches": rank_scholarship_matches,
-    "select_next_scholarship_profile_question": select_next_scholarship_profile_question,
     "inspect_scholarship": inspect_scholarship,
     "get_student_background": get_student_background,
     "save_student_background_answer": save_student_background_answer,

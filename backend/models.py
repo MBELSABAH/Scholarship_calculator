@@ -33,7 +33,6 @@ class ChatResponse(BaseModel):
     tools_used: list[str]
     sources: list[ChatSource] = Field(default_factory=list)
     ui_updates: list[str] = Field(default_factory=list)
-    application_id: str | None = None
 
 
 class ScholarshipSearchRequest(BaseModel):

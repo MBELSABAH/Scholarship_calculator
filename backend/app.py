@@ -130,7 +130,6 @@ async def chat(request: ChatRequest) -> ChatResponse:
         tools_used=result.tools_used,
         sources=result.sources,
         ui_updates=result.ui_updates,
-        application_id=result.application_id,
     )
 
 
@@ -181,17 +180,11 @@ def student_background() -> dict:
 
 @app.put("/api/student-background")
 def save_student_background(request: BackgroundAnswerRequest) -> dict:
-    snapshot = _connected_snapshot()
+    _connected_snapshot()
     try:
-        saved = SCHOLARSHIP_SESSION.save_background_answer(
+        return SCHOLARSHIP_SESSION.save_background_answer(
             request.field, request.value, confirmed=request.confirmed
         )
-        search = SCHOLARSHIP_SESSION.discovery.cached_search()
-        if search is not None:
-            matches = SCHOLARSHIP_SESSION.rank(search, snapshot)
-            saved["matches"] = [match.model_dump() for match in matches]
-            saved["next_profile_question"] = SCHOLARSHIP_SESSION.select_next_scholarship_profile_question()
-        return saved
     except ValueError as exc:
         raise HTTPException(status_code=422, detail=str(exc)) from None
 

@@ -81,8 +81,6 @@ class ScholarshipSession:
         self.background = StudentBackgroundProfile()
         self.matches: list[ScholarshipMatch] = []
         self.applications: dict[str, ScholarshipApplicationState] = {}
-        self.discovery_pending_field: str | None = None
-        self.discovery_question_count = 0
         self._lock = Lock()
 
     def clear_student_state(self) -> None:
@@ -90,8 +88,6 @@ class ScholarshipSession:
             self.background = StudentBackgroundProfile()
             self.matches = []
             self.applications = {}
-            self.discovery_pending_field = None
-            self.discovery_question_count = 0
         self.discovery.clear()
 
     def get_background(self) -> dict[str, Any]:
@@ -104,7 +100,7 @@ class ScholarshipSession:
         if not confirmed:
             raise ValueError("The student must confirm personal background information.")
         if not field:
-            field = self._pending_background_field() or self.discovery_pending_field
+            field = self._pending_background_field()
         if field not in BACKGROUND_FIELDS:
             raise ValueError("That student background field is not supported.")
         normalised = self._normalise_background_value(field, value)
@@ -112,62 +108,10 @@ class ScholarshipSession:
             data = _model_dump(self.background)
             data[field] = normalised
             self.background = StudentBackgroundProfile(**data)
-            if field == self.discovery_pending_field:
-                self.discovery_pending_field = None
             for application_id, application in list(self.applications.items()):
                 updated = self._apply_background_to_application(application, field, normalised)
                 self.applications[application_id] = updated
         return {"saved": True, "field": field, "value": normalised}
-
-    def select_next_scholarship_profile_question(self) -> dict[str, Any] | None:
-        """Choose the unanswered eligibility fact affecting the most promising matches."""
-        prompts = {
-            "financial_need": ("Does financial need apply to your situation?", ["Yes", "No", "I'm not sure"]),
-            "international_student": ("Are you an international student?", ["Yes", "No"]),
-            "pei_high_school_graduate": ("Did you graduate from a Prince Edward Island high school?", ["Yes", "No"]),
-            "indigenous_identity": ("Does an Indigenous identity criterion apply to you?", ["Yes", "No", "Prefer not to say"]),
-            "disability_status": ("Does a disability criterion apply to you?", ["Yes", "No", "Prefer not to say"]),
-            "gender_identity_criterion": ("Does the published gender criterion apply to you?", ["Yes", "No", "Prefer not to say"]),
-            "co_op_terms_completed": ("How many co-op work terms have you completed?", []),
-            "citizenship_status": ("What is your citizenship or residency status?", []),
-        }
-        signals = {
-            "financial_need": "financial need",
-            "international_student": "international student",
-            "pei_high_school_graduate": "pei high-school",
-            "indigenous_identity": "indigenous identity",
-            "disability_status": "disability status",
-            "gender_identity_criterion": "women/female identity",
-            "co_op_terms_completed": "co-op work terms",
-            "citizenship_status": "citizenship or residency",
-        }
-        with self._lock:
-            background = self.background
-            matches = list(self.matches)
-            pending_field = self.discovery_pending_field
-            question_count = self.discovery_question_count
-        if pending_field and pending_field in prompts:
-            question, choices = prompts[pending_field]
-            return {"field": pending_field, "question": question, "choices": choices, "affected_matches": 0}
-        if question_count >= 3:
-            return None
-        scores: dict[str, int] = {}
-        for match in matches:
-            if match.match_level not in {"potential", "strong"}:
-                continue
-            for field, signal in signals.items():
-                if getattr(background, field) is not None:
-                    continue
-                if any(signal in item.casefold() for item in match.missing_information):
-                    scores[field] = scores.get(field, 0) + 1
-        if not scores:
-            return None
-        field = max(scores, key=lambda item: (scores[item], item))
-        question, choices = prompts[field]
-        with self._lock:
-            self.discovery_pending_field = field
-            self.discovery_question_count += 1
-        return {"field": field, "question": question, "choices": choices, "affected_matches": scores[field]}
 
     def search_and_rank(
         self,
@@ -216,7 +160,6 @@ class ScholarshipSession:
                     if value not in (None, [], "")
                 },
             },
-            "next_profile_question": self.select_next_scholarship_profile_question(),
         }
 
     def rank(
@@ -241,57 +184,45 @@ class ScholarshipSession:
             known_matches: list[str] = []
             missing: list[str] = []
             conflicts: list[str] = []
-            matched_required = 0
-            unknown_required = 0
-            conflicting_required = 0
-            matched_preferences = 0
+            eligibility_unknown = False
 
             if scholarship.major:
-                required_count = 1
                 accepted = {major.casefold() for major in scholarship.major}
                 overlap = accepted & (student_majors | student_minors)
                 if overlap:
-                    matched_required += required_count
                     known_matches.append(
                         f"{', '.join(sorted(overlap)).title()} major or minor matches the published program requirement."
                     )
                 else:
-                    conflicting_required += required_count
                     conflicts.append("The listed program requirement does not match the connected major or minor.")
             if scholarship.faculty:
-                required_count = 1
                 faculty_terms = {faculty.casefold() for faculty in scholarship.faculty}
                 is_open_faculty = any("all facult" in term for term in faculty_terms)
                 if is_open_faculty:
-                    matched_required += required_count
                     known_matches.append("The award is listed for all faculties.")
                 elif any(
                     _faculty_matches(student_faculty, term)
                     for term in faculty_terms
                     if student_faculty
                 ):
-                    matched_required += required_count
                     known_matches.append(
                         f"{snapshot.student.faculty} faculty or school matches the published requirement."
                     )
                 else:
                     missing.append("The published faculty wording needs confirmation against the connected school.")
-                    unknown_required += required_count
+                    eligibility_unknown = True
             elif not scholarship.major:
                 known_matches.append("Open program criteria; no conflicting major was found.")
 
             if scholarship.minimum_average is not None:
-                required_count = 1
                 if latest_average is None:
                     missing.append("A comparable completed-year percentage average is unavailable.")
-                    unknown_required += required_count
+                    eligibility_unknown = True
                 elif latest_average >= scholarship.minimum_average:
-                    matched_required += required_count
                     known_matches.append(
                         f"Latest calculated average {latest_average:.2f}% meets the {scholarship.minimum_average:g}% minimum."
                     )
                 else:
-                    conflicting_required += required_count
                     conflicts.append(
                         f"Latest calculated average {latest_average:.2f}% is below the {scholarship.minimum_average:g}% minimum."
                     )
@@ -299,11 +230,10 @@ class ScholarshipSession:
                 known_matches.append("The connected record can support review of the stated academic criterion.")
 
             if scholarship.year_of_study:
-                required_count = 1
                 student_year = snapshot.student.year_of_study
                 if student_year is None:
                     missing.append("Year of study is required but unavailable in the connected profile.")
-                    unknown_required += required_count
+                    eligibility_unknown = True
                 else:
                     year_text = " ".join(scholarship.year_of_study).casefold()
                     explicit_years = _year_numbers(scholarship.year_of_study)
@@ -315,25 +245,21 @@ class ScholarshipSession:
                         missing.append(
                             f"The award uses entering-year wording ({expected}); confirm when that standing is measured."
                         )
-                        unknown_required += required_count
+                        eligibility_unknown = True
                     elif re.search(r"\bupper[- ]year\b", year_text):
                         if student_year >= 2:
-                            matched_required += required_count
                             known_matches.append(
                                 f"Calculated {_ordinal_word(student_year)}-year standing satisfies the published upper-year requirement."
                             )
                         else:
-                            conflicting_required += required_count
                             conflicts.append(
                                 "The award is restricted to upper-year students; calculated standing is first year."
                             )
                     elif student_year in explicit_years:
-                        matched_required += required_count
                         known_matches.append(
                             f"Calculated {_ordinal_word(student_year)}-year standing matches the published year requirement."
                         )
                     else:
-                        conflicting_required += required_count
                         required = " or ".join(
                             f"{_ordinal_word(year)} year" for year in sorted(explicit_years)
                         ) or "a different year of study"
@@ -342,25 +268,21 @@ class ScholarshipSession:
                         )
 
             if scholarship.financial_need_required:
-                required_count = 1
                 if background.financial_need is None:
                     missing.append("Financial need status must be confirmed by the student.")
-                    unknown_required += required_count
+                    eligibility_unknown = True
                 elif background.financial_need:
-                    matched_required += required_count
                     known_matches.append("Student confirmed that financial need applies.")
                 else:
-                    conflicting_required += required_count
                     conflicts.append("Student reported that financial need does not apply.")
 
             if scholarship.citizenship_or_residency_requirements:
-                required_count = 1
                 if not background.citizenship_status and not background.province_or_region:
                     missing.append("Citizenship or residency status must be confirmed by the student.")
-                    unknown_required += required_count
+                    eligibility_unknown = True
                 else:
                     missing.append("Student-supplied citizenship/residency information must be checked against the published wording.")
-                    unknown_required += required_count
+                    eligibility_unknown = True
 
             personal_checks = [
                 (
@@ -407,35 +329,26 @@ class ScholarshipSession:
                 is_preference = bool(re.search(r"\bprefer(?:ence|red|ably)?\b", criterion_sentence))
                 if answer is None:
                     missing.append(unknown_text)
-                    if not is_preference:
-                        unknown_required += 1
+                    eligibility_unknown = eligibility_unknown or not is_preference
                 elif answer:
                     known_matches.append(match_text)
-                    if is_preference:
-                        matched_preferences += 1
-                    else:
-                        matched_required += 1
                 elif is_preference:
                     missing.append("A published preference does not appear to apply, but it is not treated as a disqualifying conflict.")
                 else:
-                    conflicting_required += 1
                     conflicts.append(conflict_text)
 
             co_op_match = re.search(r"(?:completed?|completion of)\s+(?:at least\s+)?(\w+|\d+)\s+co-?op", description)
             if co_op_match:
-                required_count = 1
                 word_numbers = {"one": 1, "two": 2, "three": 3, "four": 4}
                 required_terms = word_numbers.get(co_op_match.group(1), None)
                 if required_terms is None and co_op_match.group(1).isdigit():
                     required_terms = int(co_op_match.group(1))
                 if background.co_op_terms_completed is None:
                     missing.append("Completed co-op work terms must be confirmed by the student.")
-                    unknown_required += required_count
+                    eligibility_unknown = True
                 elif required_terms is not None and background.co_op_terms_completed < required_terms:
-                    conflicting_required += required_count
                     conflicts.append(f"The award requires {required_terms} completed co-op work terms.")
                 else:
-                    matched_required += required_count
                     known_matches.append("Student-confirmed co-op experience is available for the published criterion.")
 
             if scholarship.personal_statement_required:
@@ -443,26 +356,27 @@ class ScholarshipSession:
             if scholarship.reference_required:
                 missing.append("A reference is required for the application.")
 
-            if conflicting_required:
-                level = "unlikely"
-            elif unknown_required:
-                level = "potential"
-            elif matched_required:
+            if conflicts:
+                level = "not_eligible"
+            elif eligibility_unknown:
+                level = "needs_more_information"
+            elif len(known_matches) >= 3:
                 level = "excellent"
+            elif len(known_matches) >= 1:
+                level = "good"
             else:
-                level = "strong"
-            total_required = matched_required + unknown_required + conflicting_required
-            confidence = round(min(0.98, max(0.2, matched_required / max(1, total_required))), 2)
+                level = "possible"
+            known_count = len(known_matches) + len(conflicts)
+            total_count = known_count + sum(
+                "required for the application" not in item for item in missing
+            )
+            confidence = round(min(0.98, max(0.2, known_count / max(1, total_count))), 2)
             results.append(
                 ScholarshipMatch(
                     scholarship_id=scholarship.id,
                     scholarship=scholarship,
                     match_level=level,
                     confidence=confidence,
-                    matched_required=matched_required,
-                    unknown_required=unknown_required,
-                    conflicting_required=conflicting_required,
-                    matched_preferences=matched_preferences,
                     known_matches=known_matches,
                     missing_information=missing,
                     known_conflicts=conflicts,
@@ -471,9 +385,10 @@ class ScholarshipSession:
 
         order = {
             "excellent": 0,
-            "strong": 1,
-            "potential": 2,
-            "unlikely": 3,
+            "good": 1,
+            "possible": 2,
+            "needs_more_information": 3,
+            "not_eligible": 4,
         }
         results.sort(
             key=lambda match: (
@@ -499,7 +414,7 @@ class ScholarshipSession:
         return {
             "scholarship_id": scholarship.id,
             "scholarship": _model_dump(scholarship),
-            "match_level": "potential",
+            "match_level": "possible",
             "confidence": 0.2,
             "known_matches": [],
             "missing_information": ["Run scholarship matching against the connected profile."],

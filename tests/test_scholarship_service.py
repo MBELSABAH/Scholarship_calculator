@@ -271,7 +271,7 @@ class ScholarshipSessionTests(unittest.TestCase):
 
     def test_unknown_sensitive_criterion_is_not_treated_as_eligibility(self):
         match = self.session.rank(self.search, self.snapshot)[0]
-        self.assertEqual(match.match_level, "potential")
+        self.assertEqual(match.match_level, "needs_more_information")
         self.assertIn("Financial need status must be confirmed by the student.", match.missing_information)
         self.assertNotIn("Student confirmed that financial need applies.", match.known_matches)
 
@@ -279,40 +279,6 @@ class ScholarshipSessionTests(unittest.TestCase):
         match = self.session.rank(self.search, self.snapshot)[0]
         self.assertEqual(match.match_level, "excellent")
         self.assertIn("Student confirmed that financial need applies.", match.known_matches)
-
-    def test_published_requirements_can_reach_excellent_without_generic_profile_facts(self):
-        scholarship = demo_scholarship(
-            financial_need_required=None,
-            personal_statement_required=False,
-            reference_required=False,
-        )
-        match = self.session.rank(
-            ScholarshipSearchResult(
-                scholarships=[scholarship], source_mode="demo_fallback", sources=[]
-            ),
-            self.snapshot,
-        )[0]
-        self.assertEqual(match.match_level, "excellent")
-        self.assertEqual(match.unknown_required, 0)
-        self.assertGreaterEqual(match.matched_required, 3)
-
-    def test_profile_question_targets_the_criterion_affecting_most_potential_matches(self):
-        awards = [
-            demo_scholarship(id=f"need-{index}", financial_need_required=True)
-            for index in range(3)
-        ] + [
-            demo_scholarship(
-                id="pei",
-                financial_need_required=None,
-                description="For Prince Edward Island high school graduates.",
-            )
-        ]
-        search = ScholarshipSearchResult(scholarships=awards, source_mode="demo_fallback", sources=[])
-        self.session.rank(search, self.snapshot)
-        question = self.session.select_next_scholarship_profile_question()
-        self.assertIsNotNone(question)
-        self.assertEqual(question["field"], "financial_need")
-        self.assertEqual(question["affected_matches"], 3)
 
     def test_background_confirmation_draft_review_and_submission_gate(self):
         state = self.session.open_application(self.scholarship.id, self.snapshot)
@@ -415,10 +381,10 @@ class ScholarshipSessionTests(unittest.TestCase):
 
         self.assertEqual(snapshot.student.year_of_study, 4)
         self.assertIn("fourth-year standing", " ".join(ranked["year-four"].known_matches).casefold())
-        self.assertEqual(ranked["year-one"].match_level, "unlikely")
+        self.assertEqual(ranked["year-one"].match_level, "not_eligible")
         self.assertIn("first year", " ".join(ranked["year-one"].known_conflicts).casefold())
         self.assertIn("upper-year", " ".join(ranked["upper-year"].known_matches).casefold())
-        self.assertEqual(ranked["entering-four"].match_level, "potential")
+        self.assertEqual(ranked["entering-four"].match_level, "needs_more_information")
 
     def test_search_and_rank_receives_calculated_year_and_academic_profile(self):
         record = load_demo_record()
