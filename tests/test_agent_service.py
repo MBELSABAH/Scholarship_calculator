@@ -164,13 +164,21 @@ class AcademicAgentServiceTests(unittest.IsolatedAsyncioTestCase):
 
     def test_conversation_ids_are_mode_scoped(self):
         store = ConversationStore()
-        scholarship_id, _ = store.open(mode="scholarship")
+        scholarship_id, _ = store.open(mode="scholarship", snapshot_id="demo-one")
         store.append_turn(scholarship_id, "Find scholarships", "Does financial need apply?")
-        academic_id, _ = store.open(scholarship_id, mode="academic")
+        academic_id, _ = store.open(scholarship_id, mode="academic", snapshot_id="demo-one")
         self.assertNotEqual(scholarship_id, academic_id)
-        reopened_id, history = store.open(scholarship_id, mode="scholarship")
+        reopened_id, history = store.open(scholarship_id, mode="scholarship", snapshot_id="demo-one")
         self.assertEqual(reopened_id, scholarship_id)
         self.assertEqual(history[-1]["content"], "Does financial need apply?")
+
+    def test_conversation_ids_cannot_cross_snapshot_provenance(self):
+        store = ConversationStore()
+        first_id, _ = store.open(mode="academic", snapshot_id="demo-snapshot")
+        store.append_turn(first_id, "What is my GPA?", "4.0")
+        replacement_id, history = store.open(first_id, mode="academic", snapshot_id="live-snapshot")
+        self.assertNotEqual(first_id, replacement_id)
+        self.assertEqual(history, [])
 
 
 if __name__ == "__main__":

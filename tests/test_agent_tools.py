@@ -7,6 +7,8 @@ from backend.agent_tools import (
     ToolExecutionError,
     execute_tool,
     get_academic_record,
+    get_course_extremes,
+    get_subject_performance,
     get_scholarship_summary,
     get_student_summary,
     project_gpa,
@@ -70,6 +72,16 @@ class AcademicAgentToolTests(unittest.TestCase):
             },
         )
         self.assertEqual(course["performance_band"], "excellent")
+        self.assertEqual(result["snapshot_id"], self.snapshot.snapshot_id)
+        self.assertEqual(result["source"], "demo")
+
+    def test_course_extremes_include_academic_year_and_subjects_use_full_record(self):
+        lowest = get_course_extremes(self.snapshot, {"count": 2, "direction": "lowest"})
+        self.assertEqual(len(lowest["courses"]), 2)
+        self.assertTrue(all(course["academic_year"] for course in lowest["courses"]))
+        subjects = get_subject_performance(self.snapshot)
+        self.assertTrue(subjects["subjects"])
+        self.assertIn("average_grade", subjects["subjects"][0])
 
     def test_project_gpa_uses_mark_mapping_and_python_math(self):
         result = project_gpa(

@@ -3,6 +3,8 @@
 from __future__ import annotations
 
 from typing import Literal
+from datetime import UTC, datetime
+from uuid import uuid4
 
 from pydantic import BaseModel, Field, SecretStr
 
@@ -147,6 +149,8 @@ class DegreeProgress(BaseModel):
 
 class AcademicSnapshot(BaseModel):
     source: Literal["live", "demo"]
+    snapshot_id: str = Field(default_factory=lambda: uuid4().hex)
+    connected_at: str = Field(default_factory=lambda: datetime.now(UTC).isoformat())
     student: StudentSummary
     academic_years: list[AcademicYear]
     scholarship_summary: ScholarshipSummary

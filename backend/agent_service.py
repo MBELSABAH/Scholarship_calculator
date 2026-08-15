@@ -39,6 +39,7 @@ MAX_HISTORY_MESSAGES = 12
 
 ACADEMIC_COPILOT_SYSTEM_PROMPT = """You are Academic Copilot, an academic and scholarship assistant.
 Use deterministic tools for academic facts and official UPEI web tools for scholarship information.
+Every named course, grade, academic year, GPA value, credit count, and subject-performance claim must be supported by a current-request AcademicSnapshot tool result or deterministic state tied to the same snapshot_id. For any question about courses, grades, highest/lowest results, subjects, or when a course was taken, call get_academic_record, get_course_extremes, or get_subject_performance as appropriate; otherwise say you cannot find it in the connected record.
 For “Find scholarships I should apply for,” use get_student_summary, search_upei_scholarships, then rank_scholarship_matches in that order. Do not call get_student_background during discovery because ranking already reads the confirmed session profile.
 Official UPEI scholarship data, AcademicSnapshot academic facts, and student-confirmed background facts are authoritative.
 Never invent scholarships, eligibility criteria, financial circumstances, citizenship, identity, leadership, volunteering, awards, dates, or personal stories.
@@ -196,17 +197,19 @@ class ConversationStore:
     def __init__(self, max_messages: int = MAX_HISTORY_MESSAGES) -> None:
         self._conversations: dict[str, list[dict[str, str]]] = {}
         self._modes: dict[str, str] = {}
+        self._snapshots: dict[str, str] = {}
         self._max_messages = max_messages
         self._lock = Lock()
 
-    def open(self, requested_id: str | None = None, *, mode: str) -> tuple[str, list[dict[str, str]]]:
+    def open(self, requested_id: str | None = None, *, mode: str, snapshot_id: str) -> tuple[str, list[dict[str, str]]]:
         with self._lock:
-            if requested_id and requested_id in self._conversations and self._modes.get(requested_id) == mode:
+            if requested_id and requested_id in self._conversations and self._modes.get(requested_id) == mode and self._snapshots.get(requested_id) == snapshot_id:
                 conversation_id = requested_id
             else:
                 conversation_id = uuid4().hex
                 self._conversations[conversation_id] = []
                 self._modes[conversation_id] = mode
+                self._snapshots[conversation_id] = snapshot_id
             return conversation_id, deepcopy(self._conversations[conversation_id])
 
     def append_turn(self, conversation_id: str, user: str, assistant: str) -> None:
@@ -224,6 +227,7 @@ class ConversationStore:
         with self._lock:
             self._conversations.clear()
             self._modes.clear()
+            self._snapshots.clear()
 
 
 @dataclass(frozen=True)
@@ -290,6 +294,7 @@ class AgentService:
         self.model_client = model_client
         self.conversations = conversations or ConversationStore()
         self.max_rounds = max_rounds
+        self._last_academic_courses: dict[tuple[str, str], list[dict[str, Any]]] = {}
 
     async def chat(
         self,
@@ -306,7 +311,13 @@ class AgentService:
         if not question:
             raise AgentServiceError("Enter a question for Academic Copilot.", http_status=422)
 
-        active_id, history = self.conversations.open(conversation_id, mode=mode)
+        active_id, history = self.conversations.open(conversation_id, mode=mode, snapshot_id=snapshot.snapshot_id)
+        if mode == "academic" and re.search(r"\b(?:which|what) year\b.*\b(?:those|them|these)\b|\b(?:those|them|these)\b.*\b(?:year|taken)\b", question, re.I):
+            courses = self._last_academic_courses.get((active_id, snapshot.snapshot_id), [])
+            if courses:
+                answer = "\n".join(f"{course['code']} — {course['academic_year']}" for course in courses)
+                self.conversations.append_turn(active_id, question, answer)
+                return AgentResult(message=answer, conversation_id=active_id, tools_used=[], suggested_replies=["Show my lowest courses"], sources=[], ui_updates=[])
         if mode == "scholarship" and re.search(r"\bcontinue eligibility questions?\b", question, re.I):
             pending = SCHOLARSHIP_SESSION.continue_discovery_interview()
             answer = pending["question"] if pending else "I've checked the remaining published eligibility details."
@@ -406,6 +417,16 @@ class AgentService:
                         if name in TOOL_FUNCTIONS and name not in tools_used:
                             tools_used.append(name)
                         self._collect_sources(result, sources)
+                        if name in {"get_course_extremes", "get_academic_record"}:
+                            courses = list(result.get("courses") or [])
+                            if name == "get_academic_record":
+                                courses = [
+                                    {**course, "academic_year": year["year"]}
+                                    for year in result.get("academic_years", [])
+                                    for course in year.get("courses", [])
+                                ]
+                            if courses:
+                                self._last_academic_courses[(active_id, snapshot.snapshot_id)] = courses
                         result_application_id = result.get("application_id")
                         if isinstance(result_application_id, str):
                             active_application_id = result_application_id

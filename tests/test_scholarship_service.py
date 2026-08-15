@@ -422,7 +422,36 @@ class ScholarshipSessionTests(unittest.TestCase):
         self.assertEqual(ranked["year-one"].match_level, "unlikely")
         self.assertIn("first year", " ".join(ranked["year-one"].known_conflicts).casefold())
         self.assertIn("upper-year", " ".join(ranked["upper-year"].known_matches).casefold())
-        self.assertEqual(ranked["entering-four"].match_level, "potential")
+        self.assertEqual(ranked["entering-four"].match_level, "excellent")
+
+    def test_entering_first_year_is_hard_conflict_for_known_fourth_year(self):
+        record = load_demo_record()
+        record["student"] = {**record["student"], "completed_credits": 102, "required_degree_credits": 120}
+        snapshot = build_academic_snapshot(record, source="demo")
+        award = demo_scholarship(
+            year_of_study=["Entering 1st Year"],
+            financial_need_required=None,
+            personal_statement_required=False,
+            description="Available to students entering their first year who graduated from a PEI high school.",
+        )
+        self.session.save_background_answer("pei_high_school_graduate", False, confirmed=True)
+        match = self.session.rank(ScholarshipSearchResult(scholarships=[award], source_mode="demo_fallback", sources=[]), snapshot)[0]
+        self.assertEqual(match.match_level, "unlikely")
+        self.assertTrue(any("entering first year" in item.casefold() for item in match.known_conflicts))
+        self.assertTrue(any("pei high-school" in item.casefold() for item in match.known_conflicts))
+
+    def test_historical_entering_wording_is_not_current_year_conflict(self):
+        record = load_demo_record()
+        record["student"] = {**record["student"], "completed_credits": 102, "required_degree_credits": 120}
+        snapshot = build_academic_snapshot(record, source="demo")
+        award = demo_scholarship(
+            year_of_study=["Entering 1st Year"],
+            financial_need_required=None,
+            personal_statement_required=False,
+            description="Students who entered UPEI directly from high school upon entering UPEI may be considered.",
+        )
+        match = self.session.rank(ScholarshipSearchResult(scholarships=[award], source_mode="demo_fallback", sources=[]), snapshot)[0]
+        self.assertNotIn("fourth-year standing", " ".join(match.known_conflicts).casefold())
 
     def test_search_and_rank_receives_calculated_year_and_academic_profile(self):
         record = load_demo_record()

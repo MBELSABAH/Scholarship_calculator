@@ -416,14 +416,19 @@ class ScholarshipSession:
                     year_text = " ".join(scholarship.year_of_study).casefold()
                     explicit_years = _year_numbers(scholarship.year_of_study)
                     if "entering" in year_text:
-                        expected = " or ".join(
-                            f"{_ordinal_word(year)} year"
-                            for year in sorted(explicit_years)
-                        ) or "the listed"
-                        missing.append(
-                            f"The award uses entering-year wording ({expected}); confirm when that standing is measured."
-                        )
-                        eligibility_unknown = True
+                        historical = bool(re.search(r"upon entering|at the time of admission|entered upei directly|admitted from", scholarship.description, re.I))
+                        if explicit_years and not historical and student_year not in explicit_years:
+                            required = " or ".join(f"{_ordinal_word(year)} year" for year in sorted(explicit_years))
+                            conflicts.append(
+                                f"Published eligibility is for students entering {required}; your connected record shows {_ordinal_word(student_year)}-year standing."
+                            )
+                        elif explicit_years and not historical:
+                            known_matches.append(
+                                f"Calculated {_ordinal_word(student_year)}-year standing matches the published entering-year requirement."
+                            )
+                        else:
+                            missing.append("The award uses historical admission wording that needs confirmation from the student.")
+                            eligibility_unknown = True
                     elif re.search(r"\bupper[- ]year\b", year_text):
                         if student_year >= 2:
                             known_matches.append(
