@@ -39,10 +39,11 @@ MAX_TOOL_CALLS_PER_ROUND = 8
 MAX_HISTORY_MESSAGES = 12
 
 ACADEMIC_COPILOT_SYSTEM_PROMPT = """You are Academic Copilot, an academic and scholarship assistant.
-Use deterministic tools for academic facts and official UPEI web tools for scholarship information.
-Every named course, grade, academic year, GPA value, credit count, and subject-performance claim must be supported by a current-request AcademicSnapshot tool result or deterministic state tied to the same snapshot_id. For any question about courses, grades, highest/lowest results, subjects, or when a course was taken, call get_academic_record, get_course_extremes, or get_subject_performance as appropriate; otherwise say you cannot find it in the connected record.
+The CURRENT CONNECTED ACADEMIC RECORD supplied on every turn is authoritative. Understand the student's question naturally. You may answer directly when the answer is clearly present in that record. Use deterministic tools when exact calculation, sorting, aggregation, GPA projection, repeated-course handling, or other computation is useful. Never invent a course, grade, academic year, GPA, credit value, scholarship, or student fact. Conversation history provides conversational context but is not factual authority; if it conflicts with the current record, the current record wins. If an answer cannot be supported by the current record or a tool result, say so.
+For normal performance analysis, repeated courses must be handled by get_course_extremes or get_subject_performance, which use only the latest completed attempt. Use get_academic_record when the student explicitly asks for transcript history or every attempt.
+Use official UPEI web tools for scholarship discovery and deterministic scholarship tools for matching and state changes.
 For “Find scholarships I should apply for,” use get_student_summary, search_upei_scholarships, then rank_scholarship_matches in that order. Do not call get_student_background during discovery because ranking already reads the confirmed session profile.
-Official UPEI scholarship data, AcademicSnapshot academic facts, and student-confirmed background facts are authoritative.
+Official UPEI scholarship data, the current connected academic record, deterministic tool results, and student-confirmed background facts are authoritative.
 Never invent scholarships, eligibility criteria, financial circumstances, citizenship, identity, leadership, volunteering, awards, dates, or personal stories.
 If a mandatory personal criterion is unknown, say the match is potential, ask exactly one concise question, then stop and wait. Do not list, preview, or mention other unanswered personal questions in that reply.
 Use known academic information automatically instead of asking for it again.
@@ -318,27 +319,9 @@ class AgentService:
             raise AgentServiceError("Enter a question for Academic Copilot.", http_status=422)
 
         active_id, history = self.conversations.open(conversation_id, mode=mode, snapshot_id=snapshot.snapshot_id)
-        refers_to_courses = bool(re.search(r"\b(?:which|what) years?\b.*\b(?:those|them|these)\b|\b(?:those|them|these)\b.*\b(?:years?|taken)\b", question, re.I))
-        if mode == "academic" and refers_to_courses:
-            courses = self._last_academic_courses.get((active_id, snapshot.snapshot_id), [])
-            if courses:
-                answer = "\n".join(f"{course['code']} — {course['academic_year']}" for course in courses)
-                self.conversations.append_turn(active_id, question, answer)
-                return AgentResult(message=answer, conversation_id=active_id, tools_used=[], suggested_replies=["Show my lowest courses"], sources=[], ui_updates=[])
         if mode == "academic":
-            routed = self._route_academic_fact(question, snapshot, active_id)
-            if routed is not None:
-                answer, tools_used, suggestions = routed
-                self.conversations.append_turn(active_id, question, answer)
-                return AgentResult(
-                    message=answer,
-                    conversation_id=active_id,
-                    tools_used=tools_used,
-                    suggested_replies=suggestions,
-                    sources=[],
-                    ui_updates=[],
-                )
-            # A new unrelated academic request must not retain an old "those" list.
+            # Academic intent belongs to the model. Keep deterministic helpers available
+            # as tools, but do not classify ordinary English with the legacy regex router.
             self._last_academic_courses.pop((active_id, snapshot.snapshot_id), None)
         if mode == "scholarship" and re.search(r"\bcontinue eligibility questions?\b", question, re.I):
             pending = SCHOLARSHIP_SESSION.continue_discovery_interview()
@@ -431,11 +414,26 @@ class AgentService:
                 {
                     "role": "system",
                     "content": (
-                        "AUTHORITATIVE CURRENT SNAPSHOT FACTS:\n"
+                        "CURRENT CONNECTED ACADEMIC RECORD (AUTHORITATIVE):\n"
                         + json.dumps(self._academic_fact_block(snapshot), ensure_ascii=False, separators=(",", ":"))
-                        + "\nRULE: You may mention only academic facts present in this block. "
-                        "Conversation history and prior assistant messages are not factual authority. "
-                        "If a number, course, grade, or year is absent, say it cannot be found in the connected record."
+                        + "\nUse this current record as factual authority. Conversation history and prior assistant messages "
+                        "are context only. Use deterministic tools for exact sorting, aggregation, projection, or repeat handling."
+                    ),
+                }
+            )
+        else:
+            messages.append(
+                {
+                    "role": "system",
+                    "content": (
+                        "CURRENT SCHOLARSHIP CONTEXT (AUTHORITATIVE):\n"
+                        + json.dumps(
+                            self._scholarship_context_block(snapshot, ui_context),
+                            ensure_ascii=False,
+                            separators=(",", ":"),
+                        )
+                        + "\nUse this context to understand natural scholarship questions. Never change eligibility "
+                        "or match levels in prose: personal facts must be saved and matches deterministically reranked."
                     ),
                 }
             )
@@ -453,6 +451,7 @@ class AgentService:
         tools_used: list[str] = []
         sources: list[dict[str, str]] = []
         run_cache: dict[str, dict[str, Any]] = {}
+        academic_evidence: list[dict[str, Any]] = []
         scholarship_transitions: list[dict[str, str]] = []
         active_application_id = (
             ui_context.get("current_application_id") if ui_context else None
@@ -515,6 +514,27 @@ class AgentService:
                     else:
                         if name in TOOL_FUNCTIONS and name not in tools_used:
                             tools_used.append(name)
+                        if mode == "academic" and name in {
+                            "get_student_summary",
+                            "get_academic_record",
+                            "get_course_extremes",
+                            "get_subject_performance",
+                            "get_scholarship_summary",
+                            "project_gpa",
+                        }:
+                            evidence_arguments: Any = arguments
+                            if isinstance(arguments, str):
+                                try:
+                                    evidence_arguments = json.loads(arguments)
+                                except json.JSONDecodeError:
+                                    evidence_arguments = {}
+                            academic_evidence.append(
+                                {
+                                    "tool": name,
+                                    "arguments": deepcopy(evidence_arguments),
+                                    "result": deepcopy(result),
+                                }
+                            )
                         self._collect_sources(result, sources)
                         if name == "rank_scholarship_matches" and isinstance(result.get("transitions"), list):
                             scholarship_transitions = [item for item in result["transitions"] if isinstance(item, dict)]
@@ -553,7 +573,9 @@ class AgentService:
                     "DeepSeek returned neither an answer nor a tool request. Try again."
                 )
             answer = content.strip()
-            if mode == "academic" and not self._academic_answer_is_verified(answer, snapshot):
+            if mode == "academic" and not self._academic_answer_is_verified(
+                answer, snapshot, academic_evidence
+            ):
                 answer = "I can't verify that course or grade in your connected academic record."
             if mode == "scholarship" and re.search(
                 r"\b(?:now (?:an? )?(?:excellent|strong)|matches? (?:are |were )?updated|you now qualify|this resolves)\b",
@@ -616,7 +638,10 @@ class AgentService:
     @staticmethod
     def _academic_fact_block(snapshot: AcademicSnapshot) -> dict[str, Any]:
         return {
-            "snapshot_id": snapshot.snapshot_id,
+            "snapshot_provenance": {
+                "snapshot_id": snapshot.snapshot_id,
+                "source": snapshot.source,
+            },
             "student": {
                 "faculty": snapshot.student.faculty,
                 "majors": list(snapshot.student.majors),
@@ -634,16 +659,18 @@ class AgentService:
                         {
                             "code": course.code,
                             "base_code": course.base_code,
+                            "name": course.name,
                             "grade": course.grade,
                             "gpa": course.gpa,
                             "credits": course.credits,
+                            "academic_year": year.year,
                         }
                         for course in year.courses
                     ],
                 }
                 for year in snapshot.academic_years
             ],
-            "scholarship_summary": {
+            "scholarship_history": {
                 "latest_acquired_year": snapshot.scholarship_summary.latest_acquired_year,
                 "latest_acquired_amount": snapshot.scholarship_summary.latest_acquired_amount,
                 "years": [
@@ -656,6 +683,70 @@ class AgentService:
                     for year in snapshot.scholarship_summary.years
                 ],
             },
+        }
+
+    @staticmethod
+    def _scholarship_context_block(
+        snapshot: AcademicSnapshot,
+        ui_context: dict[str, str | None] | None,
+    ) -> dict[str, Any]:
+        """Serialize current deterministic scholarship state without credentials."""
+        background = {
+            key: value
+            for key, value in SCHOLARSHIP_SESSION.get_background().items()
+            if value not in (None, [], "")
+        }
+        ranked: list[dict[str, Any]] = []
+        for match in SCHOLARSHIP_SESSION.get_matches():
+            scholarship = match.get("scholarship") or {}
+            criteria = match.get("criteria") or []
+            ranked.append(
+                {
+                    "scholarship_id": match.get("scholarship_id"),
+                    "name": scholarship.get("name"),
+                    "amount": scholarship.get("amount"),
+                    "match_level": match.get("match_level"),
+                    "official_criteria": [
+                        item.get("published_text")
+                        for item in criteria
+                        if item.get("published_text")
+                    ],
+                    "confirmed_matches": list(match.get("known_matches") or []),
+                    "conflicts": list(match.get("known_conflicts") or []),
+                    "unresolved_criteria": [
+                        {
+                            "key": item.get("key"),
+                            "required": item.get("required"),
+                            "preference": item.get("preference"),
+                            "official_requirement": item.get("published_text"),
+                            "question": item.get("question"),
+                        }
+                        for item in criteria
+                        if item.get("status") in {"unknown", "preference_not_met"}
+                    ],
+                    "source_url": scholarship.get("source_url"),
+                }
+            )
+        return {
+            "snapshot_provenance": {
+                "snapshot_id": snapshot.snapshot_id,
+                "source": snapshot.source,
+            },
+            "student_academic_profile": {
+                "faculty": snapshot.student.faculty,
+                "majors": list(snapshot.student.majors),
+                "minors": list(snapshot.student.minors),
+                "year_of_study": snapshot.student.year_of_study,
+                "cumulative_gpa": snapshot.student.cumulative_gpa,
+                "completed_credits": snapshot.student.completed_credits,
+                "required_degree_credits": snapshot.student.required_degree_credits,
+            },
+            "confirmed_personal_background": background,
+            "ranked_scholarships": ranked,
+            "pending_question": deepcopy(SCHOLARSHIP_SESSION.pending_question),
+            "current_application_id": (
+                ui_context.get("current_application_id") if ui_context else None
+            ),
         }
 
     def _route_academic_fact(
@@ -971,8 +1062,35 @@ class AgentService:
         return next((count for word, count in words.items() if re.search(rf"\b{word}\b", question)), default)
 
     @staticmethod
-    def _academic_answer_is_verified(answer: str, snapshot: AcademicSnapshot) -> bool:
+    def _academic_answer_is_verified(
+        answer: str,
+        snapshot: AcademicSnapshot,
+        tool_evidence: list[dict[str, Any]] | None = None,
+    ) -> bool:
+        """Block unsupported academic facts while allowing grounded reasoning language."""
         courses = [course for year in snapshot.academic_years for course in year.courses]
+        evidence_values: dict[str, list[Any]] = {}
+
+        def collect(value: Any) -> None:
+            if isinstance(value, dict):
+                for key, item in value.items():
+                    evidence_values.setdefault(key, []).append(item)
+                    collect(item)
+            elif isinstance(value, list):
+                for item in value:
+                    collect(item)
+
+        for item in tool_evidence or []:
+            collect(item)
+
+        def numeric_evidence(*keys: str) -> list[float]:
+            return [
+                float(value)
+                for key in keys
+                for value in evidence_values.get(key, [])
+                if isinstance(value, (int, float)) and not isinstance(value, bool)
+            ]
+
         by_code: dict[str, list[Any]] = {}
         for course in courses:
             by_code.setdefault(course.code.upper(), []).append(course.grade)
@@ -993,6 +1111,7 @@ class AgentService:
             for value in [
                 *(course.grade for course in courses),
                 *(year.weighted_average for year in snapshot.academic_years),
+                *numeric_evidence("grade", "average_grade", "weighted_average"),
             ]
             if isinstance(value, (int, float)) and not isinstance(value, bool)
         }
@@ -1001,7 +1120,11 @@ class AgentService:
                 return False
         allowed_gpas = {
             round(float(value), 3)
-            for value in [snapshot.student.cumulative_gpa, *(course.gpa for course in courses)]
+            for value in [
+                snapshot.student.cumulative_gpa,
+                *(course.gpa for course in courses),
+                *numeric_evidence("gpa", "current_gpa", "projected_gpa"),
+            ]
             if isinstance(value, (int, float)) and not isinstance(value, bool)
         }
         for value in re.findall(r"\bGPA\b[^\d]{0,20}(\d(?:\.\d+)?)", answer, re.I):
@@ -1013,7 +1136,20 @@ class AgentService:
                 snapshot.student.completed_credits,
                 snapshot.student.total_credit_hours,
                 snapshot.student.required_degree_credits,
+                max(
+                    snapshot.student.required_degree_credits
+                    - snapshot.student.completed_credits,
+                    0,
+                ),
                 *(course.credits for course in courses),
+                *numeric_evidence(
+                    "credits",
+                    "completed_credits",
+                    "required_degree_credits",
+                    "total_credit_hours",
+                    "current_credits",
+                    "added_credits",
+                ),
             )
         }
         for value in re.findall(r"\b(\d+(?:\.\d+)?)\s+(?:completed\s+)?(?:credit|credit hours?)\b", answer, re.I):
@@ -1024,6 +1160,9 @@ class AgentService:
             for year in snapshot.scholarship_summary.years
             if year.amount is not None
         }
+        allowed_amounts.update(
+            numeric_evidence("amount", "scholarship_amount", "latest_acquired_amount")
+        )
         for value in re.findall(r"\$\s*([\d,]+(?:\.\d+)?)", answer):
             if float(value.replace(",", "")) not in allowed_amounts:
                 return False
